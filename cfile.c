@@ -44,7 +44,12 @@ struct cfile_struct {
         FILE *fp;
         BZFILE *bp;
     } fileptr;
+    char *buffer;
+    /* This doesn't need to be initialised except for bzip2 files */
+    int buflen, bufpos; /* len = length of string read, pos = position in it */
 };
+
+#define CFILE_BUFFER_SIZE 1024
 
 static int _cf_destroyclose(void *void_fp) {
     CFile *fp = void_fp;
@@ -67,7 +72,29 @@ static int _cf_destroyclose(void *void_fp) {
 }
 
 static void finalise_open(CFile *fp) {
+    fp->buffer = NULL;
+    fp->buflen = 0;
+    fp->bufpos = 0;
     talloc_set_destructor(fp, _cf_destroyclose);
+}
+
+static int bz_fgetc(CFile *fp) {
+    if (! fp) return 0;
+    if (! fp->buffer) {
+        fp->buffer = talloc_array(fp, char, CFILE_BUFFER_SIZE);
+        if (! fp->buffer) {
+            fprintf(stderr,
+                "Error: No memory for bzip2 read buffer!\n"
+            );
+            return EOF;
+        }
+    }
+    if (fp->buflen == fp->bufpos) {
+        fp->bufpos = 0;
+        fp->buflen = BZ2_bzread(fp->fileptr.bp, fp->buffer, CFILE_BUFFER_SIZE);
+        if (fp->buflen <= 0) return EOF;
+    }
+    return fp->buffer[fp->bufpos++]; /* Ah, the cleverness of postincrement */
 }
 
 static CFile_type file_extension_type(const char *name) {
@@ -219,8 +246,23 @@ char *cfgets(CFile *fp, char *str, int len) {
     if (fp->filetype == GZIPPED) {
         return gzgets(fp->fileptr.gp, str, len);
     } else if (fp->filetype == BZIPPED) {
-        fprintf(stderr, "cfgets on bzip2 not implemented!\n");
-        return NULL;
+        /* Implementation pulled from glibc's stdio.c */
+        char *ptr = str;
+        int ch;
+  
+        if (len <= 0) return NULL;
+  
+        while (--len) {
+            if ((ch = bz_fgetc(fp)) == EOF) {
+                if (ptr == str) return NULL;
+                break;
+            }
+
+            if ((*ptr++ = ch) == '\n') break;
+        }
+
+        *ptr = '\0';
+        return str;
     } else {
         return fgets(str, len, fp->fileptr.fp);
     }
