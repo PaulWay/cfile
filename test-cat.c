@@ -30,6 +30,8 @@
  
 #include <stdio.h>
 #include <errno.h>
+#include <string.h>
+#include <stdarg.h>
 
 #include <talloc.h>
 
@@ -52,8 +54,9 @@ void write_file (const char *name) {
     char *line = NULL;
     int linelen = 0;
     while (! cfeof(in)) {
-        cfgetline(in, line, &linelen);
-        cfprintf(out, line);
+        line = cfgetline(in, line, &linelen);
+        if (! line) break;
+        cfprintf(out, "%s", line);
     }
     cfclose(in);
 } /* write_file */

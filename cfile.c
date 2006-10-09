@@ -82,6 +82,8 @@ static void finalise_open(CFile *fp) {
 
 static int bz_fgetc(CFile *fp) {
     if (! fp) return 0;
+    /* Should we move this check and creation to the initialisation,
+     * so it doesn't slow down the performance of fgetc? */
     if (! fp->buffer) {
         fp->buffer = talloc_array(fp, char, CFILE_BUFFER_SIZE);
         if (! fp->buffer) {
@@ -262,6 +264,15 @@ int cfeof(CFile *fp) {
         BZ2_bzerror(fp->fileptr.bp, &errno);
         /* this actually returns a pointer to the error message,
          * but we're not using it in this context... */
+        if (errno == 0) {
+            /* bzerror doesn't appear to be reporting BZ_STREAM_END
+             * when it's run out of characters */
+            /* But if we've allocated a buffer, and its length and
+             * position are now zero, then we're at the end of it AFAICS */
+            if (fp->buffer != NULL && fp->buflen == 0 && fp->bufpos == 0) {
+                return 1;
+            }
+        }
         return (errno == BZ_OK
              || errno == BZ_RUN_OK
              || errno == BZ_FLUSH_OK
@@ -332,7 +343,9 @@ char *cfgetline(CFile *fp, char *line, int *maxline) {
         line = talloc_array(fp, char, *maxline);
     }
     /* Get the line thus far */
-    cfgets(fp, line, *maxline);
+    if (! cfgets(fp, line, *maxline)) {
+        return NULL;
+    }
     unsigned len = strlen(line);
     unsigned extend = 0;
     while (!cfeof(fp) && !isafullline(line,len)) {
@@ -342,7 +355,14 @@ char *cfgetline(CFile *fp, char *line, int *maxline) {
         /* talloc_realloc automagically knows which context to use here :-) */
         line = talloc_realloc(fp, line, char, *maxline);
         /* Get more line */
-        cfgets(fp, line + len, extend);
+        if (! cfgets(fp, line + len, extend)) {
+            /* No more line - what do we return now? */
+            if (len == 0) {
+                return NULL;
+            } else {
+                break;
+            }
+        }
         /* And set our line length */
         len = strlen(line);
     }

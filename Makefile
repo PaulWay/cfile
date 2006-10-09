@@ -7,5 +7,5 @@ libcfile.a: cfile.c cfile.h
 	ar rv libcfile.a cfile.o
 
 test-cat: test-cat.c cfile.c cfile.h
-	gcc -g ${COPTS} cfile.o test-cat.c -o test-cat
+	gcc -g ${COPTS} -I/usr/local/include -L/usr/local/lib -lz -lbz2 ../../talloc/talloc.o cfile.o test-cat.c -o test-cat
 
