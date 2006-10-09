@@ -6,3 +6,6 @@ libcfile.a: cfile.c cfile.h
 	gcc -g ${COPTS} -c cfile.c -o cfile.o
 	ar rv libcfile.a cfile.o
 
+test-cat: test-cat.c cfile.c cfile.h
+	gcc -g ${COPTS} cfile.o test-cat.c -o test-cat
+

@@ -54,8 +54,7 @@ struct cfile_struct {
 
 #define CFILE_BUFFER_SIZE 1024
 
-static int _cf_destroyclose(void *void_fp) {
-    CFile *fp = void_fp;
+static int _cf_destroyclose(CFile *fp) {
      /* Success = 0, failure = -1 here */
     if (!fp) return 0; /* If we're given null, then assume success */
 /*    fprintf(stderr, "_cf_destroyclose(%p)\n", fp);*/
@@ -259,7 +258,18 @@ int cfeof(CFile *fp) {
     if (fp->filetype == GZIPPED) {
         return gzeof(fp->fileptr.gp);
     } else if (fp->filetype == BZIPPED) {
-        return 0;
+        int errno;
+        BZ2_bzerror(fp->fileptr.bp, &errno);
+        /* this actually returns a pointer to the error message,
+         * but we're not using it in this context... */
+        return (errno == BZ_OK
+             || errno == BZ_RUN_OK
+             || errno == BZ_FLUSH_OK
+             || errno == BZ_FINISH_OK) ? 0 : 1;
+        /* From my reading of the bzip2 documentation, all error
+         * conditions and the 'OK' condition of BZ_STREAM_END
+         * indicate that you can't read from the file any more, which
+         * is a logical EOF in my book. */
     } else {
         return feof(fp->fileptr.fp);
     }

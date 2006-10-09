@@ -23,6 +23,8 @@
 #ifndef __CFILE_H__
 #define __CFILE_H__
 
+#include <sys/types.h>
+
 /* open/write to/close a file which could be a gzip file or a normal file */
 typedef struct cfile_struct CFile;
 
