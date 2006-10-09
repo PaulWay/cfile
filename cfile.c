@@ -37,23 +37,48 @@
 
 void *pwlib_context = NULL;
 
-typedef enum filetype_enum { UNCOMPRESSED, GZIPPED, BZIPPED } CFile_type;
+/*! \brief A set of the types of file we recognise.
+ */
+typedef enum filetype_enum {
+    UNCOMPRESSED, /*!< Indicates an uncompressed file */
+    GZIPPED,      /*!< Indicates a file compresed with zlib */
+    BZIPPED       /*!< Indicates a file compressed with bzlib */
+} CFile_type;
 
+/*! \brief the structure of the actual file handle information we pass around
+ *
+ * This structure contains all the information we need to tote around to
+ * access the file, be it through zlib or bzlib or stdio.
+ */
 struct cfile_struct {
-    char *name;
-    CFile_type filetype;
-    union {
-        gzFile *gp;
-        FILE *fp;
-        BZFILE *bp;
-    } fileptr;
-    char *buffer;
+    char *name;         /*!< The name of the file opened */
+    CFile_type filetype;/*!< The type of the file opened (see CFile_type) */
+    union {             /*!< The various file pointers, all in one box */
+        gzFile *gp;     /*!< The gzip typed pointer */
+        FILE *fp;       /*!< The regular uncompressed file pointer */
+        BZFILE *bp;     /*!< The bzip2 typed file pointer */
+    } fileptr;          /*!< The structure used to contain all the file pointers */
+    char *buffer;       /*!< Used for buffering fgetc reads from bzip2 files */
     /* This doesn't need to be initialised except for bzip2 files */
-    int buflen, bufpos; /* len = length of string read, pos = position in it */
+    int buflen,         /*!< The length of the content in the buffer */
+        bufpos;         /*!< The current position of the next character */
 };
 
 #define CFILE_BUFFER_SIZE 1024
 
+/*! \brief close the file when the file pointer is destroyed.
+ *
+ *  This function is given to talloc_set_destructor so that, when the
+ *  the user does a talloc_free on the file handle or any context that
+ *  contained it, the file that was opened with that handle is
+ *  automatically closed.
+ * \param fp The file handle that is being destroyed.  Thanks to
+ *  improvements in the talloc library, this is now a typed pointer
+ *  (it was formerly a void pointer that we had to cast).
+ * \return The result of closing the file.  This should be 0 when
+ *  the file close was successful.  bzip2 files are not checked
+ *  correct - this should be fixed.
+ */
 static int _cf_destroyclose(CFile *fp) {
      /* Success = 0, failure = -1 here */
     if (!fp) return 0; /* If we're given null, then assume success */
@@ -73,6 +98,13 @@ static int _cf_destroyclose(CFile *fp) {
      * here - the above application and talloc should handle it... */
 }
 
+/*! \brief The common things we do with a file handle when it's being opened.
+ *
+ *  This function sets the remaining fields that are common to all files.
+ *  We have this as a separate function because it's called from various
+ *  parts of cfopen and also from cfdopen.
+ * \param fp The file handle to finalise.
+ */
 static void finalise_open(CFile *fp) {
     fp->buffer = NULL;
     fp->buflen = 0;
@@ -80,6 +112,18 @@ static void finalise_open(CFile *fp) {
     talloc_set_destructor(fp, _cf_destroyclose);
 }
 
+/*! \brief An implementation of fgetc for bzip2 files.
+ *
+ *  bzlib does not implement any of the 'low level' string functions.
+ *  In order to support treating a bzip2 file as a 'real' file, we
+ *  we need to provide fgets (for the cfgetline function, if nothing else).
+ *  The stdio.c implementation relies on fgetc to get one character at a
+ *  time, but this would be inefficient if done as continued one-byte
+ *  reads from bzlib.  So we use the buffer pointer to store chunks of
+ *  the file to read from.
+ * \param fp The file to read from.
+ * \return the character read, or EOF (-1).
+ */
 static int bz_fgetc(CFile *fp) {
     if (! fp) return 0;
     /* Should we move this check and creation to the initialisation,
@@ -101,6 +145,14 @@ static int bz_fgetc(CFile *fp) {
     return fp->buffer[fp->bufpos++]; /* Ah, the cleverness of postincrement */
 }
 
+/*! \brief Detect the file type from its extension
+ *
+ *  A common routine to detect the file type from its extension.  This
+ *  probably also detects a file with the name like 'foo.gzbar'.  Maybe
+ *  I should fix this...
+ * \param name The name of the file to check.
+ * \return the determined file type.
+ */
 static CFile_type file_extension_type(const char *name) {
     if        (strstr(name,".gz" ) != NULL) {
         return GZIPPED;
@@ -111,6 +163,19 @@ static CFile_type file_extension_type(const char *name) {
     }
 }
 
+/*! \brief Open a file for reading or writing
+ *
+ *  Open the given file using the given mode.  Opens the file and
+ *  returns a CFile handle to it.  Mode must start with 'r' or 'w'
+ *  to read or write (respectively) - other modes are not expected
+ *  to work.
+ *
+ * \param name The name of the file to open.  If this is "-", then
+ *  stdin is read from or stdout is written to, as appropriate (both
+ *  being used uncompressed.)
+ * \param mode "r" to specify reading, "w" for writing.
+ * \return A successfully created file handle, or NULL on failure.
+ */
 CFile *cfopen(const char *name, const char *mode) {
     if (!pwlib_context) {
         pwlib_context = talloc_init("PWLib Talloc context");
@@ -190,6 +255,17 @@ CFile *cfopen(const char *name, const char *mode) {
     return fp;
 }
 
+/*! \brief Open a file from a file descriptor
+ *
+ *  Allows you to open the file specified by the given file descriptor,
+ *  with the same mode options as a regular file.  Originally necessary
+ *  to allow access to stdin and stdout, but with the current handling
+ *  of "-" by cfopen this should be mostly unnecessary.
+ * \param filedesc An integer file descriptor number.
+ * \param mode The mode to open the file in ("r" for read, "w" for write).
+ * \return A successfully created file handle, or NULL on failure.
+ */
+
 CFile *cfdopen(int filedesc, const char *mode) {
     if (!pwlib_context) {
         pwlib_context = talloc_init("PWLib Talloc context");
@@ -205,7 +281,26 @@ CFile *cfdopen(int filedesc, const char *mode) {
     return fp;
 }
 
-/* Returns the _uncompressed_ file size */
+/*! \brief Returns the _uncompressed_ file size
+ *
+ *  The common way of reporting your progress through reading a file is
+ *  as a proportion of the uncompressed size.  But a simple stat of the
+ *  compressed file will give you a much lower figure.  So here we
+ *  extract the size of the uncompressed content of the file.  Naturally
+ *  this process is easy with uncompressed files.  It's also fairly
+ *  easy with gzip files - the size is a 32-bit little-endian signed
+ *  int (I think) at the end of the file.  Unfortunately, bzip2 files
+ *  do not carry this information, so we have to read the entire file
+ *  through bzcat and wc -c.  This is easier than reading it directly,
+ *  although it then relies on the availability of those two binaries,
+ *  and may therefore make this routine not portable.  I'm not sure if
+ *  this introduces any security holes in this library.  Unfortunately,
+ *  correspondence with Julian Seward has confirmed that there's no
+ *  other way of determining the exact uncompressed file size, as it's
+ *  not stored in the bzip2 file itself.
+ * \param fp The file handle to check
+ * \return The number of bytes in the uncompressed file.
+ */
 
 off_t cfsize(CFile *fp) {
     if (!fp) return 0;
@@ -255,6 +350,16 @@ off_t cfsize(CFile *fp) {
     }
 }
 
+/*! \brief Returns true if we've reached the end of the file being read.
+ *
+ *  This mostly passes through the state of the lower-level's EOF
+ *  checking.  But bzlib doesn't seem to correctly return BZ_STREAM_END
+ *  when the stream has actually reached its end, so we have to check
+ *  another way - whether the last buffer read was zero bytes long.
+ * \param fp The file handle to check.
+ * \return True (1) if the file has reached EOF, False (0) if not.
+ */
+
 int cfeof(CFile *fp) {
     if (!fp) return 0;
     if (fp->filetype == GZIPPED) {
@@ -286,6 +391,23 @@ int cfeof(CFile *fp) {
     }
 }
 
+/*! \brief Get a string from the file, up to a maximum length or newline.
+ *
+ *  For gzipped and uncompressed files, this simply uses their relative
+ *  library's fgets implementation.  Since bzlib doesn't provide such a
+ *  function, we have to copy the implementation from stdio.c and use
+ *  it here, referring to our own bz_fgetc function.
+ * \param fp The file handle to read from.
+ * \param str An array of characters to read the file contents into.
+ * \param len The maximum length, plus one, of the string to read.  In
+ *  other words, if this is 10, then fgets will read a maximum of nine
+ *  characters from the file.  The character after the last character
+ *  read is always set to \\0 to terminate the string.  The newline
+ *  character is kept on the line if there was room to read it.
+ * \see bz_fgetc
+ * \return ???
+ */
+ 
 char *cfgets(CFile *fp, char *str, int len) {
     if (!fp) return 0;
     if (fp->filetype == GZIPPED) {
@@ -314,6 +436,42 @@ char *cfgets(CFile *fp, char *str, int len) {
 }
 
 #define isafullline(line,len) ((line)[(len-1)] == '\n' || (line)[(len-1)] == '\r')
+
+/*! \brief Read a full line from the file, regardless of length
+ *
+ *  Of course, with fgets you can't always guarantee you've read an entire
+ *  line.  You have to know the length of the longest line, in advance, in
+ *  order to read each line from the file in one call.  cfgetline solves
+ *  this problem by progressively extending the string you pass until the
+ *  entire line has been read.  To do this it uses talloc_realloc, and a
+ *  variable which holds the length of the line allocated so far.  If you
+ *  haven't initialised the line beforehand, cfgetline will do so
+ *  (allocating it against the file pointer's context).  If you have, then
+ *  the magic of talloc_realloc allocates the new space against the
+ *  context that you originally allocated your buffer against.  So to
+ *  speak.
+ *
+ *  In normal usage, this 'buffer' will expand but never contract.  It
+ *  expands to half again its current size, so if you have a very long
+ *  line lurking in your input somewhere, then it's going to set the
+ *  buffer size for all the lines after it.  If you're concerned by this
+ *  wasting a lot of memory, then set the length negative (while keeping
+ *  its absolute size).  This will signal to cfgetline to shrink the
+ *  line buffer after this line has been read.  For example, if your line
+ *  buffer is currently 1024 and you want it to shrink, then set it to
+ *  -1024 before calling cfgetline.  In reality, this is almost never
+ *  going to be a problem.
+ * \param fp The file handle to read from.
+ * \param line A character array to read the line into, and optionally
+ *  extend.
+ * \param maxline A pointer to an integer which will contain the length of
+ *  the string currently allocated.
+ * \return A pointer to the line thus read.  If talloc_realloc has had to
+ *  move the pointer, then this will be different from the line pointer
+ *  passed in.  Therefore, the correct usage of cfgetline is something
+ *  like 'line = cfgetline(fp, line, &len);'
+ */
+ 
 char *cfgetline(CFile *fp, char *line, int *maxline) {
     /* Get a line from the file into the buffer which has been preallocated
      * to maxline.  If the line from the file is too big to fit, we extend
@@ -374,9 +532,17 @@ char *cfgetline(CFile *fp, char *line, int *maxline) {
     return line;
 }
 
-
-
-/* the writing function, however, has to know what type of file it's writing to */
+/*! \brief Print a formatted string to the file
+ *
+ *  The standard fprintf implementation.  For bzip2 and gzip files this
+ *  allocates a temporary buffer for each call.  This might seem
+ *  inefficient, but otherwise we have the fgets problem all over
+ *  again...
+ * \param fp The file handle to write to.
+ * \param fmt The format string to print.
+ * \param ... Any other variables to be printed using the format string.
+ * \return The success of the file write operation.
+ */
 
 int cfprintf(CFile *fp, const char *fmt, ...) {
     if (!fp) return 0;
@@ -398,6 +564,20 @@ int cfprintf(CFile *fp, const char *fmt, ...) {
     return rtn;
 }
 
+/*! \brief Read a block of data from the file.
+ *
+ *  Reads a given number of structures of a specified size from the
+ *  file into the memory pointer given.  The destination memory must
+ *  be allocated first.  Some read functions only specify one size,
+ *  we use two here because that's what fread requires (and it's
+ *  better for the programmer anyway IMHO).
+ * \param fp The file handle to read from.
+ * \param ptr The memory to write into.
+ * \param size The size of each structure in bytes.
+ * \param num The number of structures to read.
+ * \return The success of the file read operation.
+ */
+ 
 int cfread(CFile *fp, void *ptr, size_t size, size_t num) {
     if (!fp) return 0;
     int rtn;
@@ -411,6 +591,17 @@ int cfread(CFile *fp, void *ptr, size_t size, size_t num) {
     return rtn;
 }
 
+/*! \brief Write a block of data from the file.
+ *
+ *  Writes a given number of structures of a specified size into the
+ *  file from the memory pointer given.
+ * \param fp The file handle to write into.
+ * \param ptr The memory to read from.
+ * \param size The size of each structure in bytes.
+ * \param num The number of structures to write.
+ * \return The success of the file write operation.
+ */
+ 
 int cfwrite(CFile *fp, const void *ptr, size_t size, size_t num) {
     if (!fp) return 0;
     int rtn;
@@ -424,6 +615,14 @@ int cfwrite(CFile *fp, const void *ptr, size_t size, size_t num) {
     return rtn;
 }
 
+/*! \brief Close the given file handle.
+ *
+ *  This function frees the memory allocated for the file handle and
+ *  closes the associated file.
+ * \param fp The file handle to close.
+ * \return the success of the file close operation.
+ */
+ 
 int cfclose(CFile *fp) {
     if (!fp) return 0;
     /* Now, according to theory, the talloc destructor should close the
