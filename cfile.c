@@ -129,9 +129,9 @@ CFile *cfopen(const char *name, const char *mode) {
     if (strcmp(name, "-") == 0) {
         fp->filetype = UNCOMPRESSED;
         if (strstr(mode, "w") != 0) {
-            fp->fileptr.fp = fdopen(1, mode);
+            fp->fileptr.fp = fdopen(fileno(stdout), mode);
         } else if (strstr(mode, "r") != 0) {
-            fp->fileptr.fp = fdopen(0, mode);
+            fp->fileptr.fp = fdopen(fileno(stdin), mode);
         } else {
             fprintf(stderr,
                 "Error: Can't open - with mode %s!\n", mode
