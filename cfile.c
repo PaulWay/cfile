@@ -19,14 +19,17 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, 
  * Boston, MA  02110-1301  USA
  */
+
+/* To do:
+ * - add better error and EOF checking, particularly for bzip.
+ */
  
-/* for cfopen/cfclose/cfprintf */
 #include <zlib.h>
 #include <bzlib.h>
 #include <stdarg.h>
 #include <string.h>
+#include <stdlib.h>
 #include <talloc.h>
-/*#include <errno.h>*/
 #include <sys/types.h>
 #include <sys/stat.h>
 
@@ -216,10 +219,31 @@ off_t cfsize(CFile *fp) {
         fclose(rawfp);
         return (off_t)size;
     } else if (fp->filetype == BZIPPED) {
-        /* There's no file size information in the file.  We'd have to
-         * bunzip it entirely, which I don't want to do.  Return zero
-         * at the moment - caveat caller */
-        return 0;
+        /* There's no file size information in the file.  So we have
+         * to feed the entire file through bzcat and count its characters.
+         * Tedious, but then hopefully you only have to do this once; and
+         * at least it may cache the file for further reading.  In other
+         * words, getting the size of a bzipped file takes a number of
+         * seconds - caveat caller... */
+        const int max_input_size = 20;
+        char *cmd = talloc_asprintf(fp, "bzcat '%s' | wc -c", fp->name);
+        if (! cmd) {
+            return 0;
+        }
+        char *input = talloc_array(fp, char, max_input_size);
+        if (! input) {
+            talloc_free(cmd);
+            return 0;
+        }
+        FILE *fpipe = popen(cmd, "r");
+        if (fpipe) {
+            input = fgets(input, max_input_size, fpipe);
+        }
+        pclose(fpipe);
+        talloc_free(cmd);
+        long fsize = atol(input);
+        talloc_free(input);
+        return fsize;
     } else {
         struct stat sp;
         if (stat(fp->name, &sp) == 0) {
