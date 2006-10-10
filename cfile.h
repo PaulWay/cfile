@@ -25,7 +25,7 @@
 
 #include <sys/types.h>
 
-/* open/write to/close a file which could be a gzip file or a normal file */
+/** \typedef CFile The file handle type definition */
 typedef struct cfile_struct CFile;
 
 /* open a file, be it compressed or uncompressed */

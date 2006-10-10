@@ -53,16 +53,16 @@
  *
  * \section notes Notes
  *
- *  The file extension for gzip files is '.gz'.
+ *  The file extension for gzip files is \c '.gz'.
  *
- *  The file extension for bzip2 files is '.bz2'.
+ *  The file extension for bzip2 files is \c '.bz2'.
  *
  *  If an uncompressed file is being read, the stdio routines will
  *  always be used, despite zlib supporting opening and reading both
  *  gzip-compressed files and uncompressed files.
  *
- *  CFile files do not support random access, reading and writing, or
- *  appending.
+ *  CFile files do not support random access, simultaneous read and
+ *  write access, or appending.
  *
  * \todo Add better error and EOF checking, particularly for bzip.
  * \todo Allow only read or write modes, with no appending.
