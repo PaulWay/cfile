@@ -64,6 +64,11 @@ struct cfile_struct {
         bufpos;         /*!< The current position of the next character */
 };
 
+/*! The size of the character buffer for reading lines from bzip2 files.
+ *
+ *  This isn't really a file cache, just a way of saving us single-byte
+ *  calls to bzread.
+ */
 #define CFILE_BUFFER_SIZE 1024
 
 /*! \brief close the file when the file pointer is destroyed.
@@ -405,7 +410,7 @@ int cfeof(CFile *fp) {
  *  read is always set to \\0 to terminate the string.  The newline
  *  character is kept on the line if there was room to read it.
  * \see bz_fgetc
- * \return ???
+ * \return A pointer to the string thus read.
  */
  
 char *cfgets(CFile *fp, char *str, int len) {
@@ -435,6 +440,7 @@ char *cfgets(CFile *fp, char *str, int len) {
     }
 }
 
+/*! Macro to check whether the line is terminated by a newline or equivalent */
 #define isafullline(line,len) ((line)[(len-1)] == '\n' || (line)[(len-1)] == '\r')
 
 /*! \brief Read a full line from the file, regardless of length
