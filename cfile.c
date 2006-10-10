@@ -20,8 +20,54 @@
  * Boston, MA  02110-1301  USA
  */
 
-/* To do:
- * - add better error and EOF checking, particularly for bzip.
+/** \mainpage The CFile Library
+ *
+ * \section introduction Introduction
+ *
+ *  Put simply, this library is designed to allow your code to read
+ *  or write a file regardless of whether it is uncompressed, or
+ *  compressed with either bzip2 or gzip.  It automatically detects
+ *  the file's extension and uses the appropriate library routines.
+ *  If the file name is "-", then stdin or stdout is opened as
+ *  appropriate.  As a further service, the cfgetline routine allows
+ *  you to read lines of any size from your input file,
+ *  automatically resizing the buffer to suit.  Other convenience
+ *  routines, such as cfsize, are provided.
+ *
+ * \section requirements Requirements
+ *
+ *  The following libraries are required for CFile:
+ *   - The talloc library from http://talloc.samba.org must be
+ *     installed.
+ *   - zlib and bzlib must be installed.
+ *   - In order to determine the uncompressed file size of bzip2
+ *     file, the bzcat and wc binaries must be available to the
+ *     calling program.
+ *
+ * \section optional Optional extras
+ *
+ *  If the libmagic library is defined at the time of compiling
+ *  the cfile library, then libmagic will be used to determine the
+ *  type of files being read.  Files being written will still have
+ *  their type determined by their file extension.
+ *
+ * \section notes Notes
+ *
+ *  The file extension for gzip files is '.gz'.
+ *
+ *  The file extension for bzip2 files is '.bz2'.
+ *
+ *  If an uncompressed file is being read, the stdio routines will
+ *  always be used, despite zlib supporting opening and reading both
+ *  gzip-compressed files and uncompressed files.
+ *
+ *  CFile files do not support random access, reading and writing, or
+ *  appending.
+ *
+ * \todo Add better error and EOF checking, particularly for bzip.
+ * \todo Allow only read or write modes, with no appending.
+ * \todo Allow extra parameters in the mode string to specify
+ *  compression options.
  */
  
 #include <zlib.h>
@@ -37,7 +83,9 @@
 
 void *pwlib_context = NULL;
 
-/*! \brief A set of the types of file we recognise.
+/*! \enum filetype_enum
+ *  \typedef CFile_type
+ *  \brief A set of the types of file we recognise.
  */
 typedef enum filetype_enum {
     UNCOMPRESSED, /*!< Indicates an uncompressed file */
@@ -81,10 +129,10 @@ struct cfile_struct {
  *  improvements in the talloc library, this is now a typed pointer
  *  (it was formerly a void pointer that we had to cast).
  * \return The result of closing the file.  This should be 0 when
- *  the file close was successful.  bzip2 files are not checked
- *  correct - this should be fixed.
+ *  the file close was successful.
+ * \todo The status of closing bzip2 files should be checked.
  */
-static int _cf_destroyclose(CFile *fp) {
+static int cf_destroyclose(CFile *fp) {
      /* Success = 0, failure = -1 here */
     if (!fp) return 0; /* If we're given null, then assume success */
 /*    fprintf(stderr, "_cf_destroyclose(%p)\n", fp);*/
@@ -114,7 +162,7 @@ static void finalise_open(CFile *fp) {
     fp->buffer = NULL;
     fp->buflen = 0;
     fp->bufpos = 0;
-    talloc_set_destructor(fp, _cf_destroyclose);
+    talloc_set_destructor(fp, cf_destroyclose);
 }
 
 /*! \brief An implementation of fgetc for bzip2 files.
@@ -153,10 +201,11 @@ static int bz_fgetc(CFile *fp) {
 /*! \brief Detect the file type from its extension
  *
  *  A common routine to detect the file type from its extension.  This
- *  probably also detects a file with the name like 'foo.gzbar'.  Maybe
- *  I should fix this...
+ *  probably also detects a file with the name like 'foo.gzbar'.
  * \param name The name of the file to check.
- * \return the determined file type.
+ * \return The determined file type.
+ * \see CFile_type
+ * \todo Make sure that the extension is at the end of the file?
  */
 static CFile_type file_extension_type(const char *name) {
     if        (strstr(name,".gz" ) != NULL) {
