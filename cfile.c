@@ -20,7 +20,12 @@
  * Boston, MA  02110-1301  USA
  */
 
-/** \mainpage The CFile Library
+/** \file cfile.c
+ *  \brief The main CFile library code.
+ */
+
+/*
+ *  \mainpage The CFile Library
  *
  * \section introduction Introduction
  *
@@ -43,6 +48,10 @@
  *   - In order to determine the uncompressed file size of bzip2
  *     file, the bzcat and wc binaries must be available to the
  *     calling program.
+ *   - In order to save the uncompressed file size of bzip2 files
+ *     once calculated, the attr/xattr.h library is required.  If
+ *     the filesystem you are using does not support extended
+ *     user attributes, then nothing will happen.
  *
  * \section optional Optional extras
  *
@@ -50,6 +59,16 @@
  *  the cfile library, then libmagic will be used to determine the
  *  type of files being read.  Files being written will still have
  *  their type determined by their file extension.
+ *
+ *  In order to actually save the uncompressed file size of bzip2 files
+ *  once calculated, your file system should have extended user
+ *  attributes enabled.  This can be set by having the \c user_xattr
+ *  option set in the mount table.  You may need to remount your file
+ *  system with <tt>mount -o remount /mountpoint</tt> in order to
+ *  enable this functionality.  If this is not set, or other factors
+ *  don't allow the extended user attribute to be written, then no bad
+ *  will occur - it'll just mean that the size will be calculated from
+ *  scratch each time...
  *
  * \section notes Notes
  *
@@ -161,13 +180,13 @@ static int cf_destroyclose(CFile *fp) {
          */
         int bzerror;
         if (fp->buffer) {
+            BZ2_bzReadClose(&bzerror, fp->fileptr.bp);
+        } else {
             /* Writing: get the uncompressed byte count and store it. */
             unsigned uncompressed_size;
             /* 0 = don't bother to complete the file if there was an error */
             BZ2_bzWriteClose(&bzerror, fp->fileptr.bp, 0, &uncompressed_size, NULL);
             bzip_attempt_store(fp, uncompressed_size);
-        } else {
-            BZ2_bzReadClose(&bzerror, fp->fileptr.bp);
         }
         return bzerror;
     } else {

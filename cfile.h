@@ -20,6 +20,10 @@
  * Boston, MA  02110-1301  USA
  */
 
+/** \file cfile.h
+ *  \brief The CFile library headers and public definitions.
+ */
+
 #ifndef __CFILE_H__
 #define __CFILE_H__
 

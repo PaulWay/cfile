@@ -20,10 +20,13 @@
  * Boston, MA  02110-1301  USA
  */
 
-/* test-cat is a 'cat' analogue which uses the cfile library.  It's used
+/** \file test-cat.c
+ * \brief A 'cat' analogue which uses the cfile library.
+ *
+ * test-cat is a 'cat' analogue which uses the cfile library.  It's used
  * as a partial test of the file reading routines provided by cfile.  To
  * test it, simply run
- * 'test-cat $compressed_file | zdiff - $compressed_file'
+ * <tt>'test-cat $compressed_file | zdiff - $compressed_file'</tt>
  * (or whatever your local compressed-file-reading-diff variant is).
  * If the output is different, then obviously the cfile library is wrong!
  */
