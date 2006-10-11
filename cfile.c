@@ -78,6 +78,10 @@
 #include <talloc.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+/* For saving the size of bzip2 files once calculated: */
+#include <attr/xattr.h>
+#include <time.h>
+#include <errno.h>
 
 #include "cfile.h"
 
@@ -119,6 +123,9 @@ struct cfile_struct {
  */
 #define CFILE_BUFFER_SIZE 1024
 
+/* Predeclared prototypes */
+static void bzip_attempt_store(CFile *fp, off_t size);
+
 /*! \brief close the file when the file pointer is destroyed.
  *
  *  This function is given to talloc_set_destructor so that, when the
@@ -142,8 +149,27 @@ static int cf_destroyclose(CFile *fp) {
          * that it's compatible with fclose */
     } else if (fp->filetype == BZIPPED) {
         /* bzclose doesn't return anything - make something up. */
+        /*
         BZ2_bzclose(fp->fileptr.bp);
         return 0;
+        */
+        /* Use the ReadClose or WriteClose routines to get the error
+         * status.  If we were writing, this gives us the uncompressed
+         * file size, which can be stored in the extended attribute. */
+        /* How do we know whether we were reading or writing?  If the
+         * buffer has been allocated, we've been read from (in theory).
+         */
+        int bzerror;
+        if (fp->buffer) {
+            /* Writing: get the uncompressed byte count and store it. */
+            unsigned uncompressed_size;
+            /* 0 = don't bother to complete the file if there was an error */
+            BZ2_bzWriteClose(&bzerror, fp->fileptr.bp, 0, &uncompressed_size, NULL);
+            bzip_attempt_store(fp, uncompressed_size);
+        } else {
+            BZ2_bzReadClose(&bzerror, fp->fileptr.bp);
+        }
+        return bzerror;
     } else {
         return fclose(fp->fileptr.fp);
     }
@@ -335,6 +361,186 @@ CFile *cfdopen(int filedesc, const char *mode) {
     return fp;
 }
 
+/*! \brief Calculate the size of a bzip2 file by running it through bzcat.
+ *
+ *  The only way to get the uncompressed size of a bzip2 file, if there's
+ *  no other information about it, is to count every character.  Here we
+ *  run it through bzcat and wc -c, which some might argue was horribly
+ *  inefficient - but these tools are designed for the job, whereas we'd
+ *  have to run it through a buffer here anyway.
+ *
+ *  If we have extended attributes, we can try to cache this value in
+ *  them (see below).
+ * \param fp The file whose size needs calculating.
+ * \return The size of the uncompressed file in bytes.
+ * \see cfsize
+ */
+
+static off_t bzip_calculate_size(CFile *fp) {
+    const int max_input_size = 20;
+    char *cmd = talloc_asprintf(fp, "bzcat '%s' | wc -c", fp->name);
+    if (! cmd) {
+        return 0;
+    }
+    char *input = talloc_array(fp, char, max_input_size);
+    if (! input) {
+        talloc_free(cmd);
+        return 0;
+    }
+    FILE *fpipe = popen(cmd, "r");
+    if (fpipe) {
+        input = fgets(input, max_input_size, fpipe);
+    }
+    pclose(fpipe);
+    talloc_free(cmd);
+    long fsize = atol(input);
+    talloc_free(input);
+    return fsize;
+}
+
+/*! \struct size_xattr_struct
+ *  \brief The structure used in the extended attributes to store uncompressed
+ *   file sizes and the associated time stamp.
+ *
+ *  In order to store the uncompressed file size of a bzip2 file for later
+ *  easy retrieval, this structure stores all the necessary information to
+ *  both store the size and validate its correctness against the compressed
+ *  file.
+ *
+ *  Note that we don't attempt any check of endianness or internal
+ *  validation on this structure.  You're assumed to be reading the file
+ *  system with the same operating system that the extended attribute was
+ *  written with.
+ * \see cfsize
+ * \see bzip_attribute_size
+ * \see bzip_attempt_store
+ */
+
+struct size_xattr_struct {
+    off_t file_size;
+    time_t time_stamp;
+};
+
+/* #define DEBUG_XATTR 1 */
+
+/*! \brief Give the uncompressed file size, or 0 if errors.
+ *
+ *  This function checks whether we:
+ *   - Have extended attributes.
+ *   - Can read them.
+ *   - The file has the extended attributes for uncompressed file size.
+ *   - The attribute is valid (i.e. it's the same size as the structure
+ *     it's supposed to be stored in).
+ *   - They're not out of date WRT the compressed file.
+ *  The function returns the file size if all these are true; otherwise,
+ *  0 is returned.
+ * \param fp The file handle to check.
+ * \return The uncompressed file size attribute if it is valid, false otherwise.
+ * \see cfsize
+ */
+
+static int bzip_attribute_size(CFile *fp) {
+    struct size_xattr_struct xattr;
+    ssize_t check = getxattr(
+        fp->name,
+        "user.cfile_uncompressed_size",
+        &xattr,
+        0); /* 0 means 'tell us how many bytes are in the value' */
+#ifdef DEBUG_XATTR
+    fprintf(stderr, "Attribute check on %s gave %d\n"
+        , fp->name, (int)check
+    );
+#endif
+    /* Would the attribute be retrieved? */
+    if (check <= 0) {
+        return 0;
+    }
+    /* Does the structure size check out? */
+#ifdef DEBUG_XATTR
+    fprintf(stderr, "Attribute size = %d, structure size = %lu\n"
+        , (int)check, sizeof xattr
+    );
+#endif
+    if (check != sizeof xattr) {
+        return 0;
+    }
+    /* Fetch the attribute */
+    check = getxattr(
+        fp->name,
+        "user.cfile_uncompressed_size",
+        &xattr,
+        sizeof xattr);
+#ifdef DEBUG_XATTR
+    fprintf(stderr, "The result of the actual attribute fetch was %d\n"
+        , (int)check
+    );
+#endif
+    if (check <= 0) {
+        return 0;
+    }
+#ifdef DEBUG_XATTR
+    fprintf(stderr, "file size = %ld, time stamp = %ld\n"
+        , (long)xattr.file_size, (long)xattr.time_stamp
+    );
+#endif
+    /* Now check it against the file's modification time */
+    struct stat sp;
+    if (stat(fp->name, &sp) == 0) {
+#ifdef DEBUG_XATTR
+        fprintf(stderr, "stat on file good, mtime = %ld\n"
+            ,(long)sp.st_mtime
+        );
+#endif
+        return sp.st_mtime < xattr.time_stamp ? xattr.file_size : 0;
+    } else {
+#ifdef DEBUG_XATTR
+    fprintf(stderr, "stat on file bad.\n"
+    );
+#endif
+        return 0;
+    }
+}
+
+/*! \brief Attempt to store the file size in the extended user attributes.
+ *
+ *  If we've had to calculate the uncompressed file size the hard way,
+ *  then it's worth saving this.  This routine attempts to do so.
+ *  If we can't the value is discarded and the user will have to wait for
+ *  the file size to be calculated afresh each time.
+ * \param fp The file handle to check.
+ * \param size The uncompressed size of the file in bytes.
+ * \see cfsize
+ */
+
+static void bzip_attempt_store(CFile *fp, off_t size) {
+    struct size_xattr_struct xattr;
+    /* Set up the structure */
+    xattr.file_size = size;
+    xattr.time_stamp = time(NULL);
+#ifdef DEBUG_XATTR
+    fprintf(stderr, "Attempting to store file size = %ld, time stamp = %ld\n"
+        , (long)xattr.file_size, (long)xattr.time_stamp
+    );
+#endif
+    /* Store it in the extended attributes if possible. */
+#ifdef DEBUG_XATTR
+    int rtn =
+#endif
+    setxattr(
+        fp->name,
+        "user.cfile_uncompressed_size",
+        &xattr,
+        sizeof xattr,
+        0); /* flags = default: create or replace as necessary */
+    /* Explicitly ignoring the return value... */
+#ifdef DEBUG_XATTR
+    fprintf(stderr, "setxattr returned %d\n", rtn);
+    if (rtn == -1) {
+        fprintf(stderr, "error state is %d: %s\n",  errno, strerror(errno));
+    }
+#endif
+}
+
 /*! \brief Returns the _uncompressed_ file size
  *
  *  The common way of reporting your progress through reading a file is
@@ -352,6 +558,16 @@ CFile *cfdopen(int filedesc, const char *mode) {
  *  correspondence with Julian Seward has confirmed that there's no
  *  other way of determining the exact uncompressed file size, as it's
  *  not stored in the bzip2 file itself.
+ *
+ *  HOWEVER: we can save the next call to cfsize on this file a
+ *  considerable amount of work if we save the size in a filesystem
+ *  extended attribute.  Because rewriting an existing file does a
+ *  truncate rather than delete the inode, the attribute may get out of
+ *  sync with the actual file.  So we also write the current time as a
+ *  timestamp on that data.  If the file's mtime is greater than that
+ *  timestamp, then the data is out of date and must be recalculated.
+ *  Make sure your file system has the \c user_xattr option set if you
+ *  want to use this feature!
  * \param fp The file handle to check
  * \return The number of bytes in the uncompressed file.
  */
@@ -375,25 +591,12 @@ off_t cfsize(CFile *fp) {
          * at least it may cache the file for further reading.  In other
          * words, getting the size of a bzipped file takes a number of
          * seconds - caveat caller... */
-        const int max_input_size = 20;
-        char *cmd = talloc_asprintf(fp, "bzcat '%s' | wc -c", fp->name);
-        if (! cmd) {
-            return 0;
+        off_t size;
+        if ((size = bzip_attribute_size(fp)) == 0) {
+            size = bzip_calculate_size(fp);
+            bzip_attempt_store(fp, size);
         }
-        char *input = talloc_array(fp, char, max_input_size);
-        if (! input) {
-            talloc_free(cmd);
-            return 0;
-        }
-        FILE *fpipe = popen(cmd, "r");
-        if (fpipe) {
-            input = fgets(input, max_input_size, fpipe);
-        }
-        pclose(fpipe);
-        talloc_free(cmd);
-        long fsize = atol(input);
-        talloc_free(input);
-        return fsize;
+        return size;
     } else {
         struct stat sp;
         if (stat(fp->name, &sp) == 0) {
