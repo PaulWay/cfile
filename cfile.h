@@ -53,6 +53,8 @@ char *cfgetline(CFile *fp, char *line, int *maxline);
 /* print a formatted string to the file */
 int cfprintf(CFile *fp, const char *fmt, ...)
   __attribute((format (printf, 2, 3)));
+/* print a formatted string to the file, from another function */
+int cvfprintf(CFile *fp, const char *fmt, va_list ap);
 /* read num structures of size bytes into the memory at ptr */
 int cfread(CFile *fp, void *ptr, size_t size, size_t num);
 /* write num structures of size bytes from the memory at ptr */

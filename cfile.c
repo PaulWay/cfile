@@ -20,12 +20,11 @@
  * Boston, MA  02110-1301  USA
  */
 
-/** \file cfile.c
+/*! \file cfile.c
  *  \brief The main CFile library code.
  */
 
-/*
- *  \mainpage The CFile Library
+/*! \mainpage The CFile Library
  *
  * \section introduction Introduction
  *
@@ -129,6 +128,8 @@ struct cfile_struct {
         FILE *fp;       /*!< The regular uncompressed file pointer */
         BZFILE *bp;     /*!< The bzip2 typed file pointer */
     } fileptr;          /*!< The structure used to contain all the file pointers */
+    /* We use the buffer for reading from bzip2 files (which only give us blocks,
+     * not lines) and for writing. */
     char *buffer;       /*!< Used for buffering fgetc reads from bzip2 files */
     /* This doesn't need to be initialised except for bzip2 files */
     int buflen,         /*!< The length of the content in the buffer */
@@ -202,6 +203,7 @@ static int cf_destroyclose(CFile *fp) {
  *  We have this as a separate function because it's called from various
  *  parts of cfopen and also from cfdopen.
  * \param fp The file handle to finalise.
+ * \todo Should we pre-allocate the output buffer when writing?
  */
 static void finalise_open(CFile *fp) {
     fp->buffer = NULL;
@@ -809,6 +811,50 @@ char *cfgetline(CFile *fp, char *line, int *maxline) {
     return line;
 }
 
+/*! \brief Print a formatted string to the file, from another function
+ *
+ *  The standard vfprintf implementation.  For those people that have
+ *  to receive a '...' argument in their own function and send it to
+ *  a CFile.
+ *
+ * \param fp The file handle to write to.
+ * \param fmt The format string to print.
+ * \param ap The compiled va_list of parameters to print.
+ * \return The success of the file write operation.
+ * \todo Should we be reusing a buffer rather than allocating one each time?
+ */
+int cvfprintf(CFile *fp, const char *fmt, va_list ap) {
+    if (!fp) return 0;
+    int rtn;
+    /* Determine the size of what we have to write first */
+    /*
+    char c; va_list ap2;
+    va_copy(ap2, ap);
+    int len = vsnprintf(&c, 1, fmt, ap2) + 1;
+    va_end(ap2);
+    if (len > fp->buflen) {
+        fp->buffer = talloc_realloc(fp, fp->buffer, char, len);
+        if (!fp->buffer) {
+            fp->buflen = 0;
+            return -1;
+        }
+    }
+    len = vsnprintf(fp->buffer, len, fmt, ap);
+    */
+    if (fp->filetype == GZIPPED) {
+        char *buf = talloc_vasprintf(fp, fmt, ap);
+        rtn = gzprintf(fp->fileptr.gp, "%s", buf);
+        talloc_free(buf);
+    } else if (fp->filetype == BZIPPED) {
+        char *buf = talloc_vasprintf(fp, fmt, ap);
+        rtn = BZ2_bzwrite(fp->fileptr.bp, buf, strlen(buf));
+        talloc_free(buf);
+    } else {
+        rtn = vfprintf(fp->fileptr.fp, fmt, ap);
+    }
+    return rtn;
+}
+
 /*! \brief Print a formatted string to the file
  *
  *  The standard fprintf implementation.  For bzip2 and gzip files this
@@ -822,21 +868,10 @@ char *cfgetline(CFile *fp, char *line, int *maxline) {
  */
 
 int cfprintf(CFile *fp, const char *fmt, ...) {
-    if (!fp) return 0;
+    /* if (!fp) return 0; # Checked by cvfprintf anyway */
     va_list ap;
     va_start(ap, fmt);
-    int rtn;
-    if (fp->filetype == GZIPPED) {
-        char *buf = talloc_vasprintf(fp, fmt, ap);
-        rtn = gzprintf(fp->fileptr.gp, "%s", buf);
-        talloc_free(buf);
-    } else if (fp->filetype == BZIPPED) {
-        char *buf = talloc_vasprintf(fp, fmt, ap);
-        rtn = BZ2_bzwrite(fp->fileptr.bp, buf, strlen(buf));
-        talloc_free(buf);
-    } else {
-        rtn = vfprintf(fp->fileptr.fp, fmt, ap);
-    }
+    int rtn = cvfprintf(fp, fmt, ap);
     va_end(ap);
     return rtn;
 }
