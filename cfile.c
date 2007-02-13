@@ -31,12 +31,13 @@
  *  Put simply, this library is designed to allow your code to read
  *  or write a file regardless of whether it is uncompressed, or
  *  compressed with either bzip2 or gzip.  It automatically detects
- *  the file's extension and uses the appropriate library routines.
+ *  the compression type from the file's extension and encapsulates
+ *  the appropriate library routines in a common interface.
  *  If the file name is "-", then stdin or stdout is opened as
- *  appropriate.  As a further service, the cfgetline routine allows
- *  you to read lines of any size from your input file,
+ *  appropriate.  As a further service, the cfgetline() routine
+ *  allows you to read lines of any size from your input file,
  *  automatically resizing the buffer to suit.  Other convenience
- *  routines, such as cfsize, are provided.
+ *  routines, such as cfsize(), are provided.
  *
  * \section requirements Requirements
  *
@@ -69,6 +70,16 @@
  *  will occur - it'll just mean that the size will be calculated from
  *  scratch each time...
  *
+ * \section aims Aims
+ *
+ *  To allow you to read or write files whether it is compressed or
+ *  not.
+ *
+ *  To provide extra, useful functions like cfgetline().
+ *
+ *  To provide a consistent parameter passing interface rather than
+ *  having to know exactly what is passed where and in what form.
+ *
  * \section notes Notes
  *
  *  The file extension for gzip files is \c '.gz'.
@@ -83,9 +94,26 @@
  *  write access, or appending.
  *
  * \todo Add better error and EOF checking, particularly for bzip.
+ *
  * \todo Allow only read or write modes, with no appending.
+ *
  * \todo Allow extra parameters in the mode string to specify
  *  compression options.
+ *
+ * \todo Use the buffer to write to: avoids allocating a new temporary
+ *  buffer upon each cfprintf() and cvfprintf().
+ *
+ * \todo Tridge noted that the standard implementation of stdio has
+ *  pointers in the file handle that refer to the functions that are
+ *  called when performing operations on that file handle.  It may
+ *  therefore be able to provide a wrapper that allows callers to
+ *  simply replace a #include <stdio.h> with #include <cfile.h> and
+ *  all file operations would then happen transparently.  The modified
+ *  fopen would determine the file type and update the jump block
+ *  with the relevant functions (either direct calls to the functions
+ *  in e.g. zlib, or wrappers that implement the correct semantics.
+ *  So the whole thing would be a 'drop in' replacement for stdio,
+ *  rather than requiring modification of existing code.
  */
  
 #include <zlib.h>
@@ -365,6 +393,8 @@ CFile *cfopen(const char *name, const char *mode) {
  * \param filedesc An integer file descriptor number.
  * \param mode The mode to open the file in ("r" for read, "w" for write).
  * \return A successfully created file handle, or NULL on failure.
+ * \todo Make this detect a compressed input stream, and allow setting of
+ *  the compression type via the mode parameter for an output stream.
  */
 
 CFile *cfdopen(int filedesc, const char *mode) {
@@ -372,6 +402,9 @@ CFile *cfdopen(int filedesc, const char *mode) {
         pwlib_context = talloc_init("PWLib Talloc context");
     }
     CFile *fp = talloc_zero(pwlib_context, CFile);
+    talloc_set_name(fp, "CFile file descriptor %d (mode '%s')", filedesc, mode);
+    fp->name = talloc_asprintf(fp, "file descriptor %d", filedesc);
+    
     fp->filetype = UNCOMPRESSED;
     fp->fileptr.fp = fdopen(filedesc, mode);
     if (!(fp->fileptr.fp)) {
@@ -643,11 +676,11 @@ int cfeof(CFile *fp) {
     if (fp->filetype == GZIPPED) {
         return gzeof(fp->fileptr.gp);
     } else if (fp->filetype == BZIPPED) {
-        int errno;
-        BZ2_bzerror(fp->fileptr.bp, &errno);
+        int errnum;
+        BZ2_bzerror(fp->fileptr.bp, &errnum);
         /* this actually returns a pointer to the error message,
          * but we're not using it in this context... */
-        if (errno == 0) {
+        if (errnum == 0) {
             /* bzerror doesn't appear to be reporting BZ_STREAM_END
              * when it's run out of characters */
             /* But if we've allocated a buffer, and its length and
@@ -656,10 +689,10 @@ int cfeof(CFile *fp) {
                 return 1;
             }
         }
-        return (errno == BZ_OK
-             || errno == BZ_RUN_OK
-             || errno == BZ_FLUSH_OK
-             || errno == BZ_FINISH_OK) ? 0 : 1;
+        return (errnum == BZ_OK
+             || errnum == BZ_RUN_OK
+             || errnum == BZ_FLUSH_OK
+             || errnum == BZ_FINISH_OK) ? 0 : 1;
         /* From my reading of the bzip2 documentation, all error
          * conditions and the 'OK' condition of BZ_STREAM_END
          * indicate that you can't read from the file any more, which
@@ -843,7 +876,10 @@ int cvfprintf(CFile *fp, const char *fmt, va_list ap) {
     */
     if (fp->filetype == GZIPPED) {
         char *buf = talloc_vasprintf(fp, fmt, ap);
-        rtn = gzprintf(fp->fileptr.gp, "%s", buf);
+        /* Problem in zlib forbids gzprintf of more than 4095 characters
+         * at a time.  Use gzwrite to get around this, assuming that it
+         * doesn't have the same problem... */
+        rtn = gzwrite(fp->fileptr.gp, buf, strlen(buf));
         talloc_free(buf);
     } else if (fp->filetype == BZIPPED) {
         char *buf = talloc_vasprintf(fp, fmt, ap);
@@ -923,6 +959,31 @@ int cfwrite(CFile *fp, const void *ptr, size_t size, size_t num) {
         rtn = BZ2_bzwrite(fp->fileptr.bp, ptr, size * num);
     } else {
         rtn = fwrite(ptr, size, num, fp->fileptr.fp);
+    }
+    return rtn;
+}
+
+/*! \brief Flush the file's output buffer.
+ *
+ *  This function flushes any data passed to write or printf but not
+ *  yet written to disk.  If the file is being read, it has no effect.
+ * \param fp The file handle to flush.
+ * \return the success of the file flush operation.
+ * \note for gzip files, under certain compression methods, flushing
+ *  may result in lower compression performance.  We use Z_SYNC_FLUSH
+ *  to write to the nearest byte boundary without unduly impacting
+ *  compression.
+ */
+ 
+int cfflush(CFile *fp) {
+    if (!fp) return 0;
+    int rtn;
+    if (fp->filetype == GZIPPED) {
+        rtn = gzflush(fp->fileptr.gp, Z_SYNC_FLUSH);
+    } else if (fp->filetype == BZIPPED) {
+        rtn = BZ2_bzflush(fp->fileptr.bp);
+    } else {
+        rtn = fflush(fp->fileptr.fp);
     }
     return rtn;
 }

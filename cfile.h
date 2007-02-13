@@ -60,6 +60,8 @@ int cfread(CFile *fp, void *ptr, size_t size, size_t num);
 /* write num structures of size bytes from the memory at ptr */
 /* no attempt at endianness conversion is made with cfread and cfwrite */
 int cfwrite(CFile *fp, const void *ptr, size_t size, size_t num);
+/* flush the file's output buffer. */
+int cfflush(CFile *fp);
 /* close the file.  talloc_free'ing the pointer will also close the
  * file.  It will not be closed automatically if the pointer goes out
  * of scope. */
