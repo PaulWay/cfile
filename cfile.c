@@ -292,6 +292,27 @@ static CFile_type file_extension_type(const char *name) {
     }
 }
 
+/*! \brief Set CFile's parent context
+ *
+ *  Set CFile's parent context.  This allows a caller using talloc to 'own'
+ *  all the memory created by CFile.  Because we use destructor functions,
+ *  this in turn means that when the caller frees our memory all cfiles will
+ *  be automatically closed
+ *
+ * \param parent_context the talloc context of the caller.
+ * \return nothing
+ */
+void cf_set_context(void *parent_context) {
+    if (pwlib_context) {
+        /* we've already set up a context - we need the caller to take
+         * ownership of our current memory. */
+        talloc_steal(parent_context, pwlib_context);
+    } else {
+        /* set our context to be their context */
+        pwlib_context = parent_context;
+    }
+}
+
 /*! \brief Open a file for reading or writing
  *
  *  Open the given file using the given mode.  Opens the file and

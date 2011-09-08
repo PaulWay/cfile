@@ -32,6 +32,9 @@
 /** \typedef CFile The file handle type definition */
 typedef struct cfile_struct CFile;
 
+/* set cfile's owned context - allows parents to close all cfiles */
+void cf_set_context(void *parent_context);
+
 /* open a file, be it compressed or uncompressed */
 CFile *cfopen(const char *name, const char *mode);
 /* open a file descriptor; it is treated as uncompressed */
