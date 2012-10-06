@@ -229,7 +229,7 @@ static int cf_destroyclose(CFile *fp) {
  *
  *  This function sets the remaining fields that are common to all files.
  *  We have this as a separate function because it's called from various
- *  parts of cfopen and also from cfdopen.
+ *  parts of cfopen() and also from cfdopen().
  * \param fp The file handle to finalise.
  * \todo Should we pre-allocate the output buffer when writing?
  */
@@ -320,13 +320,13 @@ void cf_set_context(void *parent_context) {
  *  to read or write (respectively) - other modes are not expected
  *  to work.
  *
- * \param name The name of the file to open.  If this is "-", then
- *  stdin is read from or stdout is written to, as appropriate (both
- *  being used uncompressed.)
- * \param mode "r" to specify reading, "w" for writing.
  * \return A successfully created file handle, or NULL on failure.
  */
-CFile *cfopen(const char *name, const char *mode) {
+CFile *cfopen(const char *name, /*!< The name of the file to open.  
+               If this is "-", then stdin is read from or stdout is
+               written to, as appropriate (both being used uncompressed.) */
+              const char *mode) /*!< "r" to specify reading, "w" for writing. */
+{
     if (!pwlib_context) {
         pwlib_context = talloc_init("PWLib Talloc context");
     }
