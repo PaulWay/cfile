@@ -21,10 +21,10 @@
  */
 
 /*! \file cfile.c
- *  \brief The main CFile library code.
+ *  \brief The main cfile library code.
  */
 
-/*! \mainpage The CFile Library
+/*! \mainpage The cfile Library
  *
  * \section introduction Introduction
  *
@@ -41,7 +41,7 @@
  *
  * \section requirements Requirements
  *
- *  The following libraries are required for CFile:
+ *  The following libraries are required for cfile:
  *   - The talloc library from http://talloc.samba.org must be
  *     installed.
  *   - zlib and bzlib must be installed.
@@ -90,7 +90,7 @@
  *  always be used, despite zlib supporting opening and reading both
  *  gzip-compressed files and uncompressed files.
  *
- *  CFile files do not support random access, simultaneous read and
+ *  cfile files do not support random access, simultaneous read and
  *  write access, or appending.
  *
  * \todo Add better error and EOF checking, particularly for bzip.
@@ -134,14 +134,14 @@
 void *pwlib_context = NULL;
 
 /*! \enum filetype_enum
- *  \typedef CFile_type
+ *  \typedef cfile_type
  *  \brief A set of the types of file we recognise.
  */
 typedef enum filetype_enum {
     UNCOMPRESSED, /*!< Indicates an uncompressed file */
     GZIPPED,      /*!< Indicates a file compresed with zlib */
     BZIPPED       /*!< Indicates a file compressed with bzlib */
-} CFile_type;
+} cfile_type;
 
 /*! \brief the structure of the actual file handle information we pass around
  *
@@ -150,7 +150,7 @@ typedef enum filetype_enum {
  */
 struct cfile_struct {
     char *name;         /*!< The name of the file opened */
-    CFile_type filetype;/*!< The type of the file opened (see CFile_type) */
+    cfile_type filetype;/*!< The type of the file opened (see cfile_type) */
     union {             /*!< The various file pointers, all in one box */
         gzFile *gp;     /*!< The gzip typed pointer */
         FILE *fp;       /*!< The regular uncompressed file pointer */
@@ -172,7 +172,7 @@ struct cfile_struct {
 #define CFILE_BUFFER_SIZE 1024
 
 /* Predeclared prototypes */
-static void bzip_attempt_store(CFile *fp, off_t size);
+static void bzip_attempt_store(cfile *fp, off_t size);
 
 /*! \brief close the file when the file pointer is destroyed.
  *
@@ -187,7 +187,7 @@ static void bzip_attempt_store(CFile *fp, off_t size);
  *  the file close was successful.
  * \todo The status of closing bzip2 files should be checked.
  */
-static int cf_destroyclose(CFile *fp) {
+static int cf_destroyclose(cfile *fp) {
      /* Success = 0, failure = -1 here */
     if (!fp) return 0; /* If we're given null, then assume success */
 /*    fprintf(stderr, "_cf_destroyclose(%p)\n", fp);*/
@@ -233,7 +233,7 @@ static int cf_destroyclose(CFile *fp) {
  * \param fp The file handle to finalise.
  * \todo Should we pre-allocate the output buffer when writing?
  */
-static void finalise_open(CFile *fp) {
+static void finalise_open(cfile *fp) {
     fp->buffer = NULL;
     fp->buflen = 0;
     fp->bufpos = 0;
@@ -252,7 +252,7 @@ static void finalise_open(CFile *fp) {
  * \param fp The file to read from.
  * \return the character read, or EOF (-1).
  */
-static int bz_fgetc(CFile *fp) {
+static int bz_fgetc(cfile *fp) {
     if (! fp) return 0;
     /* Should we move this check and creation to the initialisation,
      * so it doesn't slow down the performance of fgetc? */
@@ -279,10 +279,10 @@ static int bz_fgetc(CFile *fp) {
  *  probably also detects a file with the name like 'foo.gzbar'.
  * \param name The name of the file to check.
  * \return The determined file type.
- * \see CFile_type
+ * \see cfile_type
  * \todo Make sure that the extension is at the end of the file?
  */
-static CFile_type file_extension_type(const char *name) {
+static cfile_type file_extension_type(const char *name) {
     if        (strstr(name,".gz" ) != NULL) {
         return GZIPPED;
     } else if (strstr(name,".bz2") != NULL) {
@@ -292,10 +292,10 @@ static CFile_type file_extension_type(const char *name) {
     }
 }
 
-/*! \brief Set CFile's parent context
+/*! \brief Set cfile's parent context
  *
- *  Set CFile's parent context.  This allows a caller using talloc to 'own'
- *  all the memory created by CFile.  Because we use destructor functions,
+ *  Set cfile's parent context.  This allows a caller using talloc to 'own'
+ *  all the memory created by cfile.  Because we use destructor functions,
  *  this in turn means that when the caller frees our memory all cfiles will
  *  be automatically closed
  *
@@ -316,13 +316,13 @@ void cf_set_context(void *parent_context) {
 /*! \brief Open a file for reading or writing
  *
  *  Open the given file using the given mode.  Opens the file and
- *  returns a CFile handle to it.  Mode must start with 'r' or 'w'
+ *  returns a cfile handle to it.  Mode must start with 'r' or 'w'
  *  to read or write (respectively) - other modes are not expected
  *  to work.
  *
  * \return A successfully created file handle, or NULL on failure.
  */
-CFile *cfopen(const char *name, /*!< The name of the file to open.  
+cfile *cfopen(const char *name, /*!< The name of the file to open.  
                If this is "-", then stdin is read from or stdout is
                written to, as appropriate (both being used uncompressed.) */
               const char *mode) /*!< "r" to specify reading, "w" for writing. */
@@ -330,7 +330,7 @@ CFile *cfopen(const char *name, /*!< The name of the file to open.
     if (!pwlib_context) {
         pwlib_context = talloc_init("PWLib Talloc context");
     }
-    CFile *fp = talloc_zero(pwlib_context, CFile);
+    cfile *fp = talloc_zero(pwlib_context, cfile);
     if (! fp) {
         fprintf(stderr,
             "Error: no memory for new file handle opening '%s'\n",
@@ -338,7 +338,7 @@ CFile *cfopen(const char *name, /*!< The name of the file to open.
         );
         return NULL;
     }
-    talloc_set_name(fp, "CFile '%s' (mode '%s')", name, mode);
+    talloc_set_name(fp, "cfile '%s' (mode '%s')", name, mode);
     fp->name = talloc_strdup(fp, name);
     /* If we have a '-' as a file name, dup stdin or stdout */
     if (strcmp(name, "-") == 0) {
@@ -418,12 +418,12 @@ CFile *cfopen(const char *name, /*!< The name of the file to open.
  *  the compression type via the mode parameter for an output stream.
  */
 
-CFile *cfdopen(int filedesc, const char *mode) {
+cfile *cfdopen(int filedesc, const char *mode) {
     if (!pwlib_context) {
         pwlib_context = talloc_init("PWLib Talloc context");
     }
-    CFile *fp = talloc_zero(pwlib_context, CFile);
-    talloc_set_name(fp, "CFile file descriptor %d (mode '%s')", filedesc, mode);
+    cfile *fp = talloc_zero(pwlib_context, cfile);
+    talloc_set_name(fp, "cfile file descriptor %d (mode '%s')", filedesc, mode);
     fp->name = talloc_asprintf(fp, "file descriptor %d", filedesc);
     
     fp->filetype = UNCOMPRESSED;
@@ -451,7 +451,7 @@ CFile *cfdopen(int filedesc, const char *mode) {
  * \see cfsize
  */
 
-static off_t bzip_calculate_size(CFile *fp) {
+static off_t bzip_calculate_size(cfile *fp) {
     const int max_input_size = 20;
     char *cmd = talloc_asprintf(fp, "bzcat '%s' | wc -c", fp->name);
     if (! cmd) {
@@ -514,7 +514,7 @@ struct size_xattr_struct {
  * \see cfsize
  */
 
-static int bzip_attribute_size(CFile *fp) {
+static int bzip_attribute_size(cfile *fp) {
     struct size_xattr_struct xattr;
     ssize_t check = getxattr(
         fp->name,
@@ -587,7 +587,7 @@ static int bzip_attribute_size(CFile *fp) {
  * \see cfsize
  */
 
-static void bzip_attempt_store(CFile *fp, off_t size) {
+static void bzip_attempt_store(cfile *fp, off_t size) {
     struct size_xattr_struct xattr;
     /* Set up the structure */
     xattr.file_size = size;
@@ -647,7 +647,7 @@ static void bzip_attempt_store(CFile *fp, off_t size) {
  * \return The number of bytes in the uncompressed file.
  */
 
-off_t cfsize(CFile *fp) {
+off_t cfsize(cfile *fp) {
     if (!fp) return 0;
     if (fp->filetype == GZIPPED) {
         FILE *rawfp = fopen(fp->name,"rb"); /* open the compressed file directly */
@@ -692,7 +692,7 @@ off_t cfsize(CFile *fp) {
  * \return True (1) if the file has reached EOF, False (0) if not.
  */
 
-int cfeof(CFile *fp) {
+int cfeof(cfile *fp) {
     if (!fp) return 0;
     if (fp->filetype == GZIPPED) {
         return gzeof(fp->fileptr.gp);
@@ -740,7 +740,7 @@ int cfeof(CFile *fp) {
  * \return A pointer to the string thus read.
  */
  
-char *cfgets(CFile *fp, char *str, int len) {
+char *cfgets(cfile *fp, char *str, int len) {
     if (!fp) return 0;
     if (fp->filetype == GZIPPED) {
         return gzgets(fp->fileptr.gp, str, len);
@@ -805,7 +805,7 @@ char *cfgets(CFile *fp, char *str, int len) {
  *  like 'line = cfgetline(fp, line, &len);'
  */
  
-char *cfgetline(CFile *fp, char *line, int *maxline) {
+char *cfgetline(cfile *fp, char *line, int *maxline) {
     /* Get a line from the file into the buffer which has been preallocated
      * to maxline.  If the line from the file is too big to fit, we extend
      * the buffer and increase maxline.
@@ -869,7 +869,7 @@ char *cfgetline(CFile *fp, char *line, int *maxline) {
  *
  *  The standard vfprintf implementation.  For those people that have
  *  to receive a '...' argument in their own function and send it to
- *  a CFile.
+ *  a cfile.
  *
  * \param fp The file handle to write to.
  * \param fmt The format string to print.
@@ -877,7 +877,7 @@ char *cfgetline(CFile *fp, char *line, int *maxline) {
  * \return The success of the file write operation.
  * \todo Should we be reusing a buffer rather than allocating one each time?
  */
-int cvfprintf(CFile *fp, const char *fmt, va_list ap) {
+int cvfprintf(cfile *fp, const char *fmt, va_list ap) {
     if (!fp) return 0;
     int rtn;
     /* Determine the size of what we have to write first */
@@ -924,7 +924,7 @@ int cvfprintf(CFile *fp, const char *fmt, va_list ap) {
  * \return The success of the file write operation.
  */
 
-int cfprintf(CFile *fp, const char *fmt, ...) {
+int cfprintf(cfile *fp, const char *fmt, ...) {
     /* if (!fp) return 0; # Checked by cvfprintf anyway */
     va_list ap;
     va_start(ap, fmt);
@@ -947,7 +947,7 @@ int cfprintf(CFile *fp, const char *fmt, ...) {
  * \return The success of the file read operation.
  */
  
-int cfread(CFile *fp, void *ptr, size_t size, size_t num) {
+int cfread(cfile *fp, void *ptr, size_t size, size_t num) {
     if (!fp) return 0;
     int rtn;
     if (fp->filetype == GZIPPED) {
@@ -971,7 +971,7 @@ int cfread(CFile *fp, void *ptr, size_t size, size_t num) {
  * \return The success of the file write operation.
  */
  
-int cfwrite(CFile *fp, const void *ptr, size_t size, size_t num) {
+int cfwrite(cfile *fp, const void *ptr, size_t size, size_t num) {
     if (!fp) return 0;
     int rtn;
     if (fp->filetype == GZIPPED) {
@@ -996,7 +996,7 @@ int cfwrite(CFile *fp, const void *ptr, size_t size, size_t num) {
  *  compression.
  */
  
-int cfflush(CFile *fp) {
+int cfflush(cfile *fp) {
     if (!fp) return 0;
     int rtn;
     if (fp->filetype == GZIPPED) {
@@ -1017,7 +1017,7 @@ int cfflush(CFile *fp) {
  * \return the success of the file close operation.
  */
  
-int cfclose(CFile *fp) {
+int cfclose(cfile *fp) {
     if (!fp) return 0;
     /* Now, according to theory, the talloc destructor should close the
      * file correctly and pass back it's return code */

@@ -42,12 +42,12 @@
 
 void *context = NULL;
 
-CFile *out = NULL;
+cfile *out = NULL;
 
 void write_file (const char *name) {
     /* write_file - read the named file and write it to stdout
      */
-    CFile *in = cfopen(name, "r");
+    cfile *in = cfopen(name, "r");
     if (! in) {
         fprintf(stderr,
             "Error: can't open %s for reading: %s!\n",
