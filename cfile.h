@@ -30,7 +30,7 @@
 #include <sys/types.h>
 
 /** \typedef cfile The file handle type definition */
-typedef struct cfile_struct cfile;
+typedef struct cfile cfile;
 
 /* set cfile's owned context - allows parents to close all cfiles */
 void cf_set_context(void *parent_context);

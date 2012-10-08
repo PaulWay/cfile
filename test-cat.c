@@ -67,6 +67,7 @@ void write_file (const char *name) {
 int main (int argc, char *argv[])
 {
 	context = talloc_init("main test-cat context");
+	cf_set_context(context);
 	out = cfdopen(1, "w");
 	if (! out) {
 	    fprintf(stderr,

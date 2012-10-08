@@ -1,13 +1,22 @@
-COPTS    = -Wall -Wshadow -Werror-implicit-function-declaration -Wstrict-prototypes -Wpointer-arith -Wcast-qual -Wcast-align -Wwrite-strings -Wmissing-format-attribute -Wformat=2 -Wno-format-y2k -Wno-declaration-after-statement
+COPTS    = -Wall -Wshadow -Werror-implicit-function-declaration -Wstrict-prototypes -Wpointer-arith -Wcast-qual -Wcast-align -Wwrite-strings -Wmissing-format-attribute -Wformat=2 -Wno-format-y2k -Wno-declaration-after-statement -Wextra
 
 all: libcfile.a
 
-libcfile.a: cfile.c cfile.h
-	gcc -g ${COPTS} -c cfile.c -o cfile.o
-	ar rv libcfile.a cfile.o
+cfile_normal.o: cfile_normal.c cfile_normal.h
+	gcc -c ${COPTS} -c cfile_normal.c -o cfile_normal.o
 
-test-cat: test-cat.c cfile.c cfile.h
-	gcc -g ${COPTS} -I/usr/local/include -L/usr/local/lib -lz -lbz2 -ltalloc cfile.o test-cat.c -o test-cat
+cfile_gzip.o: cfile_gzip.c cfile_gzip.h
+	gcc -c ${COPTS} -lz -c cfile_gzip.c -o cfile_gzip.o
+
+cfile_bzip2.o: cfile_bzip2.c cfile_bzip2.h
+	gcc -c ${COPTS} -lbz2 -ltalloc -c cfile_bzip2.c -o cfile_bzip2.o
+
+libcfile.a: cfile.c cfile.h cfile_normal.o cfile_gzip.o cfile_bzip2.o
+	gcc -g ${COPTS} -c cfile.c -o cfile.o
+	ar rv libcfile.a cfile.o cfile_normal.o cfile_gzip.o cfile_bzip2.o
+
+test-cat: test-cat.c libcfile.a
+	gcc -g ${COPTS} -I/usr/local/include -L/usr/local/lib -L. -lz -lbz2 -ltalloc -lcfile test-cat.c -o test-cat
 
 clean:
-	rm -f *.o *.a
+	rm -f *.o *.a test-cat

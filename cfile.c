@@ -116,180 +116,42 @@
  *  rather than requiring modification of existing code.
  */
  
-#include <zlib.h>
-#include <bzlib.h>
 #include <stdarg.h>
 #include <string.h>
 #include <stdlib.h>
 #include <talloc.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-/* For saving the size of bzip2 files once calculated: */
-#include <attr/xattr.h>
-#include <time.h>
 #include <errno.h>
 
 #include "cfile.h"
+#include "cfile_private.h"
+#include "cfile_normal.h"
+#include "cfile_gzip.h"
+#include "cfile_bzip2.h"
+
+/*! \brief The library's Talloc context
+ */
 
 void *pwlib_context = NULL;
 
-/*! \enum filetype_enum
- *  \typedef cfile_type
- *  \brief A set of the types of file we recognise.
- */
-typedef enum filetype_enum {
-    UNCOMPRESSED, /*!< Indicates an uncompressed file */
-    GZIPPED,      /*!< Indicates a file compresed with zlib */
-    BZIPPED       /*!< Indicates a file compressed with bzlib */
-} cfile_type;
-
-/*! \brief the structure of the actual file handle information we pass around
+/*! \brief Allocate a new table with the implementation's functions
  *
- * This structure contains all the information we need to tote around to
- * access the file, be it through zlib or bzlib or stdio.
+ *  Allocate an implementation-specific amount of memory to this pointer,
+ *  and fill the generic table structure with the given implementation's
+ *  function table.
+ * \return The allocated memory, or NULL if we couldn't allocate.
  */
-struct cfile_struct {
-    char *name;         /*!< The name of the file opened */
-    cfile_type filetype;/*!< The type of the file opened (see cfile_type) */
-    union {             /*!< The various file pointers, all in one box */
-        gzFile *gp;     /*!< The gzip typed pointer */
-        FILE *fp;       /*!< The regular uncompressed file pointer */
-        BZFILE *bp;     /*!< The bzip2 typed file pointer */
-    } fileptr;          /*!< The structure used to contain all the file pointers */
-    /* We use the buffer for reading from bzip2 files (which only give us blocks,
-     * not lines) and for writing. */
-    char *buffer;       /*!< Used for buffering fgetc reads from bzip2 files */
-    /* This doesn't need to be initialised except for bzip2 files */
-    int buflen,         /*!< The length of the content in the buffer */
-        bufpos;         /*!< The current position of the next character */
-};
-
-/*! The size of the character buffer for reading lines from bzip2 files.
- *
- *  This isn't really a file cache, just a way of saving us single-byte
- *  calls to bzread.
- */
-#define CFILE_BUFFER_SIZE 1024
-
-/* Predeclared prototypes */
-static void bzip_attempt_store(cfile *fp, off_t size);
-
-/*! \brief close the file when the file pointer is destroyed.
- *
- *  This function is given to talloc_set_destructor so that, when the
- *  the user does a talloc_free on the file handle or any context that
- *  contained it, the file that was opened with that handle is
- *  automatically closed.
- * \param fp The file handle that is being destroyed.  Thanks to
- *  improvements in the talloc library, this is now a typed pointer
- *  (it was formerly a void pointer that we had to cast).
- * \return The result of closing the file.  This should be 0 when
- *  the file close was successful.
- * \todo The status of closing bzip2 files should be checked.
- */
-static int cf_destroyclose(cfile *fp) {
-     /* Success = 0, failure = -1 here */
-    if (!fp) return 0; /* If we're given null, then assume success */
-/*    fprintf(stderr, "_cf_destroyclose(%p)\n", fp);*/
-    if (fp->filetype == GZIPPED) {
-        return gzclose(fp->fileptr.gp);
-        /* I'm not sure of what zlib's error code is here, but one hopes
-         * that it's compatible with fclose */
-    } else if (fp->filetype == BZIPPED) {
-        /* bzclose doesn't return anything - make something up. */
-        /*
-        BZ2_bzclose(fp->fileptr.bp);
-        return 0;
-        */
-        /* Use the ReadClose or WriteClose routines to get the error
-         * status.  If we were writing, this gives us the uncompressed
-         * file size, which can be stored in the extended attribute. */
-        /* How do we know whether we were reading or writing?  If the
-         * buffer has been allocated, we've been read from (in theory).
-         */
-        int bzerror;
-        if (fp->buffer) {
-            BZ2_bzReadClose(&bzerror, fp->fileptr.bp);
-        } else {
-            /* Writing: get the uncompressed byte count and store it. */
-            unsigned uncompressed_size;
-            /* 0 = don't bother to complete the file if there was an error */
-            BZ2_bzWriteClose(&bzerror, fp->fileptr.bp, 0, &uncompressed_size, NULL);
-            bzip_attempt_store(fp, uncompressed_size);
-        }
-        return bzerror;
-    } else {
-        return fclose(fp->fileptr.fp);
+cfile *cfile_alloc(const cfile_vtable *vptr, const char *name, const char *mode) {
+    if (!pwlib_context) {
+        pwlib_context = talloc_init("CFile Talloc context");
     }
-    /* I'm not sure what should happen if the file couldn't be closed
-     * here - the above application and talloc should handle it... */
-}
-
-/*! \brief The common things we do with a file handle when it's being opened.
- *
- *  This function sets the remaining fields that are common to all files.
- *  We have this as a separate function because it's called from various
- *  parts of cfopen() and also from cfdopen().
- * \param fp The file handle to finalise.
- * \todo Should we pre-allocate the output buffer when writing?
- */
-static void finalise_open(cfile *fp) {
-    fp->buffer = NULL;
-    fp->buflen = 0;
-    fp->bufpos = 0;
-    talloc_set_destructor(fp, cf_destroyclose);
-}
-
-/*! \brief An implementation of fgetc for bzip2 files.
- *
- *  bzlib does not implement any of the 'low level' string functions.
- *  In order to support treating a bzip2 file as a 'real' file, we
- *  we need to provide fgets (for the cfgetline function, if nothing else).
- *  The stdio.c implementation relies on fgetc to get one character at a
- *  time, but this would be inefficient if done as continued one-byte
- *  reads from bzlib.  So we use the buffer pointer to store chunks of
- *  the file to read from.
- * \param fp The file to read from.
- * \return the character read, or EOF (-1).
- */
-static int bz_fgetc(cfile *fp) {
-    if (! fp) return 0;
-    /* Should we move this check and creation to the initialisation,
-     * so it doesn't slow down the performance of fgetc? */
-    if (! fp->buffer) {
-        fp->buffer = talloc_array(fp, char, CFILE_BUFFER_SIZE);
-        if (! fp->buffer) {
-            fprintf(stderr,
-                "Error: No memory for bzip2 read buffer!\n"
-            );
-            return EOF;
-        }
+    cfile *fp = talloc_size(pwlib_context, vptr->struct_size);
+    if (fp) {
+        fp->vptr = vptr;
+        talloc_set_name(fp, "cfile '%s' (mode '%s')", name, mode);
+        fp->filename = talloc_strdup(fp, name);
+    	talloc_set_destructor(fp, vptr->close);
     }
-    if (fp->buflen == fp->bufpos) {
-        fp->bufpos = 0;
-        fp->buflen = BZ2_bzread(fp->fileptr.bp, fp->buffer, CFILE_BUFFER_SIZE);
-        if (fp->buflen <= 0) return EOF;
-    }
-    return fp->buffer[fp->bufpos++]; /* Ah, the cleverness of postincrement */
-}
-
-/*! \brief Detect the file type from its extension
- *
- *  A common routine to detect the file type from its extension.  This
- *  probably also detects a file with the name like 'foo.gzbar'.
- * \param name The name of the file to check.
- * \return The determined file type.
- * \see cfile_type
- * \todo Make sure that the extension is at the end of the file?
- */
-static cfile_type file_extension_type(const char *name) {
-    if        (strstr(name,".gz" ) != NULL) {
-        return GZIPPED;
-    } else if (strstr(name,".bz2") != NULL) {
-        return BZIPPED;
-    } else {
-        return UNCOMPRESSED;
-    }
+    return fp;
 }
 
 /*! \brief Set cfile's parent context
@@ -316,9 +178,8 @@ void cf_set_context(void *parent_context) {
 /*! \brief Open a file for reading or writing
  *
  *  Open the given file using the given mode.  Opens the file and
- *  returns a cfile handle to it.  Mode must start with 'r' or 'w'
- *  to read or write (respectively) - other modes are not expected
- *  to work.
+ *  returns a cfile handle to it.  Mode can be any type that the actual file
+ *  supports.
  *
  * \return A successfully created file handle, or NULL on failure.
  */
@@ -327,82 +188,39 @@ cfile *cfopen(const char *name, /*!< The name of the file to open.
                written to, as appropriate (both being used uncompressed.) */
               const char *mode) /*!< "r" to specify reading, "w" for writing. */
 {
-    if (!pwlib_context) {
-        pwlib_context = talloc_init("PWLib Talloc context");
-    }
-    cfile *fp = talloc_zero(pwlib_context, cfile);
-    if (! fp) {
-        fprintf(stderr,
-            "Error: no memory for new file handle opening '%s'\n",
-            name
-        );
-        return NULL;
-    }
-    talloc_set_name(fp, "cfile '%s' (mode '%s')", name, mode);
-    fp->name = talloc_strdup(fp, name);
-    /* If we have a '-' as a file name, dup stdin or stdout */
+    /* If we have a '-' as a file name, treat it as uncompressed (for now) */
     if (strcmp(name, "-") == 0) {
-        fp->filetype = UNCOMPRESSED;
-        if (strstr(mode, "w") != 0) {
-            fp->fileptr.fp = fdopen(fileno(stdout), mode);
-        } else if (strstr(mode, "r") != 0) {
-            fp->fileptr.fp = fdopen(fileno(stdin), mode);
-        } else {
-            fprintf(stderr,
-                "Error: Can't open - with mode %s!\n", mode
-            );
-            fp->fileptr.fp = NULL;
-        }
-        if (! fp->fileptr.fp) {
-            talloc_free(fp);
-            return NULL;
-        }
-        finalise_open(fp);
-        return fp;
+        return normal_open(name, mode);
     }
-    /* At some stage we should really replace this with a better test,
-     * Maybe one based on magic numbers */
 #ifdef MAGIC_NONE
     /* We can only determine the file type if it exists - i.e. is being
-     * read. */
+     * read.  Otherwise, fall through to file extension checking. */
     if (strstr(mode, "r") != NULL) {
         magic_t checker = magic_open(MAGIC_NONE);
-        if (! checker) {
-            /* Give up and go back to file extension */
-            fp->filetype = file_extension_type(name);
-        } else {
+        if (checker) {
             char *type = magic_file(checker, name);
+            cfile *rtn;
             if (strstr(type, "gzip compressed data") != NULL) {
-                fp->filetype = GZIPPED;
+                rtn = gzip_open(name, mode);
             } else if (strstr(type, "bzip2 compressed data") != NULL) {
-                fp->filetype = BZIPPED;
+                rtn = bzip2_open(name, mode);
             } else {
-                fp->filetype = UNCOMPRESSED;
+                rtn = normal_open(name, mode);
             }
             magic_close(checker);
+            return rtn;
         }
-    } else {
-        fp->filetype = file_extension_type(name);
-    }
-#else
-    fp->filetype = file_extension_type(name);
+    } 
 #endif
     /* Even though zlib allows reading of uncompressed files, let's
      * not complicate things too much at this stage :-) */
-    if (fp->filetype == GZIPPED) {
-        /* Should we do something about specifying a compression level? */
-        fp->fileptr.gp = gzopen(name, mode);
-    } else if (fp->filetype == BZIPPED) {
-        fp->fileptr.bp = BZ2_bzopen(name, mode);
+    if        (strstr(name,".gz" ) != NULL) {
+        return gzip_open(name, mode);
+    } else if (strstr(name,".bz2") != NULL) {
+        return bzip2_open(name, mode);
     } else {
-        fp->fileptr.fp = fopen(name, mode);
+        return normal_open(name, mode);
     }
-    if (!(fp->fileptr.fp)) {
-        talloc_free(fp);
-        return NULL;
-    }
-    finalise_open(fp);
-    return fp;
 }
 
 /*! \brief Open a file from a file descriptor
@@ -419,201 +237,9 @@ cfile *cfopen(const char *name, /*!< The name of the file to open.
  */
 
 cfile *cfdopen(int filedesc, const char *mode) {
-    if (!pwlib_context) {
-        pwlib_context = talloc_init("PWLib Talloc context");
-    }
-    cfile *fp = talloc_zero(pwlib_context, cfile);
-    talloc_set_name(fp, "cfile file descriptor %d (mode '%s')", filedesc, mode);
-    fp->name = talloc_asprintf(fp, "file descriptor %d", filedesc);
-    
-    fp->filetype = UNCOMPRESSED;
-    fp->fileptr.fp = fdopen(filedesc, mode);
-    if (!(fp->fileptr.fp)) {
-        talloc_free(fp);
-        return NULL;
-    }
-    finalise_open(fp);
-    return fp;
-}
-
-/*! \brief Calculate the size of a bzip2 file by running it through bzcat.
- *
- *  The only way to get the uncompressed size of a bzip2 file, if there's
- *  no other information about it, is to count every character.  Here we
- *  run it through bzcat and wc -c, which some might argue was horribly
- *  inefficient - but these tools are designed for the job, whereas we'd
- *  have to run it through a buffer here anyway.
- *
- *  If we have extended attributes, we can try to cache this value in
- *  them (see below).
- * \param fp The file whose size needs calculating.
- * \return The size of the uncompressed file in bytes.
- * \see cfsize
- */
-
-static off_t bzip_calculate_size(cfile *fp) {
-    const int max_input_size = 20;
-    char *cmd = talloc_asprintf(fp, "bzcat '%s' | wc -c", fp->name);
-    if (! cmd) {
-        return 0;
-    }
-    char *input = talloc_array(fp, char, max_input_size);
-    if (! input) {
-        talloc_free(cmd);
-        return 0;
-    }
-    FILE *fpipe = popen(cmd, "r");
-    if (fpipe) {
-        input = fgets(input, max_input_size, fpipe);
-    }
-    pclose(fpipe);
-    talloc_free(cmd);
-    long fsize = atol(input);
-    talloc_free(input);
-    return fsize;
-}
-
-/*! \struct size_xattr_struct
- *  \brief The structure used in the extended attributes to store uncompressed
- *   file sizes and the associated time stamp.
- *
- *  In order to store the uncompressed file size of a bzip2 file for later
- *  easy retrieval, this structure stores all the necessary information to
- *  both store the size and validate its correctness against the compressed
- *  file.
- *
- *  Note that we don't attempt any check of endianness or internal
- *  validation on this structure.  You're assumed to be reading the file
- *  system with the same operating system that the extended attribute was
- *  written with.
- * \see cfsize
- * \see bzip_attribute_size
- * \see bzip_attempt_store
- */
-
-struct size_xattr_struct {
-    off_t file_size;
-    time_t time_stamp;
-};
-
-/* #define DEBUG_XATTR 1 */
-
-/*! \brief Give the uncompressed file size, or 0 if errors.
- *
- *  This function checks whether we:
- *   - Have extended attributes.
- *   - Can read them.
- *   - The file has the extended attributes for uncompressed file size.
- *   - The attribute is valid (i.e. it's the same size as the structure
- *     it's supposed to be stored in).
- *   - They're not out of date WRT the compressed file.
- *  The function returns the file size if all these are true; otherwise,
- *  0 is returned.
- * \param fp The file handle to check.
- * \return The uncompressed file size attribute if it is valid, false otherwise.
- * \see cfsize
- */
-
-static int bzip_attribute_size(cfile *fp) {
-    struct size_xattr_struct xattr;
-    ssize_t check = getxattr(
-        fp->name,
-        "user.cfile_uncompressed_size",
-        &xattr,
-        0); /* 0 means 'tell us how many bytes are in the value' */
-#ifdef DEBUG_XATTR
-    fprintf(stderr, "Attribute check on %s gave %d\n"
-        , fp->name, (int)check
-    );
-#endif
-    /* Would the attribute be retrieved? */
-    if (check <= 0) {
-        return 0;
-    }
-    /* Does the structure size check out? */
-#ifdef DEBUG_XATTR
-    fprintf(stderr, "Attribute size = %d, structure size = %lu\n"
-        , (int)check, sizeof xattr
-    );
-#endif
-    if (check != sizeof xattr) {
-        return 0;
-    }
-    /* Fetch the attribute */
-    check = getxattr(
-        fp->name,
-        "user.cfile_uncompressed_size",
-        &xattr,
-        sizeof xattr);
-#ifdef DEBUG_XATTR
-    fprintf(stderr, "The result of the actual attribute fetch was %d\n"
-        , (int)check
-    );
-#endif
-    if (check <= 0) {
-        return 0;
-    }
-#ifdef DEBUG_XATTR
-    fprintf(stderr, "file size = %ld, time stamp = %ld\n"
-        , (long)xattr.file_size, (long)xattr.time_stamp
-    );
-#endif
-    /* Now check it against the file's modification time */
-    struct stat sp;
-    if (stat(fp->name, &sp) == 0) {
-#ifdef DEBUG_XATTR
-        fprintf(stderr, "stat on file good, mtime = %ld\n"
-            ,(long)sp.st_mtime
-        );
-#endif
-        return sp.st_mtime < xattr.time_stamp ? xattr.file_size : 0;
-    } else {
-#ifdef DEBUG_XATTR
-    fprintf(stderr, "stat on file bad.\n"
-    );
-#endif
-        return 0;
-    }
-}
-
-/*! \brief Attempt to store the file size in the extended user attributes.
- *
- *  If we've had to calculate the uncompressed file size the hard way,
- *  then it's worth saving this.  This routine attempts to do so.
- *  If we can't the value is discarded and the user will have to wait for
- *  the file size to be calculated afresh each time.
- * \param fp The file handle to check.
- * \param size The uncompressed size of the file in bytes.
- * \see cfsize
- */
-
-static void bzip_attempt_store(cfile *fp, off_t size) {
-    struct size_xattr_struct xattr;
-    /* Set up the structure */
-    xattr.file_size = size;
-    xattr.time_stamp = time(NULL);
-#ifdef DEBUG_XATTR
-    fprintf(stderr, "Attempting to store file size = %ld, time stamp = %ld\n"
-        , (long)xattr.file_size, (long)xattr.time_stamp
-    );
-#endif
-    /* Store it in the extended attributes if possible. */
-#ifdef DEBUG_XATTR
-    int rtn =
-#endif
-    setxattr(
-        fp->name,
-        "user.cfile_uncompressed_size",
-        &xattr,
-        sizeof xattr,
-        0); /* flags = default: create or replace as necessary */
-    /* Explicitly ignoring the return value... */
-#ifdef DEBUG_XATTR
-    fprintf(stderr, "setxattr returned %d\n", rtn);
-    if (rtn == -1) {
-        fprintf(stderr, "error state is %d: %s\n",  errno, strerror(errno));
-    }
-#endif
+    /* We don't support trying to determine the nature of a file that's
+       already open */
+    return normal_dopen(filedesc, mode);
 }
 
 /*! \brief Returns the _uncompressed_ file size
@@ -621,150 +247,45 @@ static void bzip_attempt_store(cfile *fp, off_t size) {
  *  The common way of reporting your progress through reading a file is
  *  as a proportion of the uncompressed size.  But a simple stat of the
  *  compressed file will give you a much lower figure.  So here we
- *  extract the size of the uncompressed content of the file.  Naturally
- *  this process is easy with uncompressed files.  It's also fairly
- *  easy with gzip files - the size is a 32-bit little-endian signed
- *  int (I think) at the end of the file.  Unfortunately, bzip2 files
- *  do not carry this information, so we have to read the entire file
- *  through bzcat and wc -c.  This is easier than reading it directly,
- *  although it then relies on the availability of those two binaries,
- *  and may therefore make this routine not portable.  I'm not sure if
- *  this introduces any security holes in this library.  Unfortunately,
- *  correspondence with Julian Seward has confirmed that there's no
- *  other way of determining the exact uncompressed file size, as it's
- *  not stored in the bzip2 file itself.
+ *  extract the size of the uncompressed content of the file.
  *
- *  HOWEVER: we can save the next call to cfsize on this file a
- *  considerable amount of work if we save the size in a filesystem
- *  extended attribute.  Because rewriting an existing file does a
- *  truncate rather than delete the inode, the attribute may get out of
- *  sync with the actual file.  So we also write the current time as a
- *  timestamp on that data.  If the file's mtime is greater than that
- *  timestamp, then the data is out of date and must be recalculated.
- *  Make sure your file system has the \c user_xattr option set if you
- *  want to use this feature!
  * \param fp The file handle to check
  * \return The number of bytes in the uncompressed file.
  */
 
 off_t cfsize(cfile *fp) {
-    if (!fp) return 0;
-    if (fp->filetype == GZIPPED) {
-        FILE *rawfp = fopen(fp->name,"rb"); /* open the compressed file directly */
-        if (!rawfp) {
-            return 0;
-        }
-        fseek(rawfp,-4,2);
-        int size; /* Make sure this is a 32-bit int! */
-        fread(&size,4,1,rawfp);
-        fclose(rawfp);
-        return (off_t)size;
-    } else if (fp->filetype == BZIPPED) {
-        /* There's no file size information in the file.  So we have
-         * to feed the entire file through bzcat and count its characters.
-         * Tedious, but then hopefully you only have to do this once; and
-         * at least it may cache the file for further reading.  In other
-         * words, getting the size of a bzipped file takes a number of
-         * seconds - caveat caller... */
-        off_t size;
-        if ((size = bzip_attribute_size(fp)) == 0) {
-            size = bzip_calculate_size(fp);
-            bzip_attempt_store(fp, size);
-        }
-        return size;
-    } else {
-        struct stat sp;
-        if (stat(fp->name, &sp) == 0) {
-            return sp.st_size;
-        } else {
-            return 0;
-        }
+    if (!fp || !fp->vptr) {
+        errno = EINVAL;
+        return (off_t)-1;
     }
+    return fp->vptr->size(fp);
 }
 
 /*! \brief Returns true if we've reached the end of the file being read.
  *
- *  This mostly passes through the state of the lower-level's EOF
- *  checking.  But bzlib doesn't seem to correctly return BZ_STREAM_END
- *  when the stream has actually reached its end, so we have to check
- *  another way - whether the last buffer read was zero bytes long.
  * \param fp The file handle to check.
  * \return True (1) if the file has reached EOF, False (0) if not.
  */
 
 int cfeof(cfile *fp) {
-    if (!fp) return 0;
-    if (fp->filetype == GZIPPED) {
-        return gzeof(fp->fileptr.gp);
-    } else if (fp->filetype == BZIPPED) {
-        int errnum;
-        BZ2_bzerror(fp->fileptr.bp, &errnum);
-        /* this actually returns a pointer to the error message,
-         * but we're not using it in this context... */
-        if (errnum == 0) {
-            /* bzerror doesn't appear to be reporting BZ_STREAM_END
-             * when it's run out of characters */
-            /* But if we've allocated a buffer, and its length and
-             * position are now zero, then we're at the end of it AFAICS */
-            if (fp->buffer != NULL && fp->buflen == 0 && fp->bufpos == 0) {
-                return 1;
-            }
-        }
-        return (errnum == BZ_OK
-             || errnum == BZ_RUN_OK
-             || errnum == BZ_FLUSH_OK
-             || errnum == BZ_FINISH_OK) ? 0 : 1;
-        /* From my reading of the bzip2 documentation, all error
-         * conditions and the 'OK' condition of BZ_STREAM_END
-         * indicate that you can't read from the file any more, which
-         * is a logical EOF in my book. */
-    } else {
-        return feof(fp->fileptr.fp);
+    if (!fp || !fp->vptr) {
+        errno = EINVAL;
+        return -1;
     }
+    return fp->vptr->eof(fp);
 }
 
 /*! \brief Get a string from the file, up to a maximum length or newline.
  *
- *  For gzipped and uncompressed files, this simply uses their relative
- *  library's fgets implementation.  Since bzlib doesn't provide such a
- *  function, we have to copy the implementation from stdio.c and use
- *  it here, referring to our own bz_fgetc function.
- * \param fp The file handle to read from.
- * \param str An array of characters to read the file contents into.
- * \param len The maximum length, plus one, of the string to read.  In
- *  other words, if this is 10, then fgets will read a maximum of nine
- *  characters from the file.  The character after the last character
- *  read is always set to \\0 to terminate the string.  The newline
- *  character is kept on the line if there was room to read it.
- * \see bz_fgetc
  * \return A pointer to the string thus read.
  */
  
 char *cfgets(cfile *fp, char *str, int len) {
-    if (!fp) return 0;
-    if (fp->filetype == GZIPPED) {
-        return gzgets(fp->fileptr.gp, str, len);
-    } else if (fp->filetype == BZIPPED) {
-        /* Implementation pulled from glibc's stdio.c */
-        char *ptr = str;
-        int ch;
-  
-        if (len <= 0) return NULL;
-  
-        while (--len) {
-            if ((ch = bz_fgetc(fp)) == EOF) {
-                if (ptr == str) return NULL;
-                break;
-            }
-
-            if ((*ptr++ = ch) == '\n') break;
-        }
-
-        *ptr = '\0';
-        return str;
-    } else {
-        return fgets(str, len, fp->fileptr.fp);
+    if (!fp || !fp->vptr) {
+        errno = EINVAL;
+        return NULL;
     }
+    return fp->vptr->gets(fp, str, len);
 }
 
 /*! Macro to check whether the line is terminated by a newline or equivalent */
@@ -820,6 +341,8 @@ char *cfgetline(cfile *fp, char *line, int *maxline) {
      * Otherwise, maxline is assumed to be the length of your string.  You'd
      * better have this right... :-)
      */
+    /* Since this uses only cfile calls and not the underlying implementation
+       code, this is left as is. */
     /* Check for the 'shrink' option */
     char shrink = (*maxline < 0);
     if (shrink) {
@@ -878,38 +401,11 @@ char *cfgetline(cfile *fp, char *line, int *maxline) {
  * \todo Should we be reusing a buffer rather than allocating one each time?
  */
 int cvfprintf(cfile *fp, const char *fmt, va_list ap) {
-    if (!fp) return 0;
-    int rtn;
-    /* Determine the size of what we have to write first */
-    /*
-    char c; va_list ap2;
-    va_copy(ap2, ap);
-    int len = vsnprintf(&c, 1, fmt, ap2) + 1;
-    va_end(ap2);
-    if (len > fp->buflen) {
-        fp->buffer = talloc_realloc(fp, fp->buffer, char, len);
-        if (!fp->buffer) {
-            fp->buflen = 0;
-            return -1;
-        }
+    if (!fp || !fp->vptr) {
+        errno = EINVAL;
+        return -1;
     }
-    len = vsnprintf(fp->buffer, len, fmt, ap);
-    */
-    if (fp->filetype == GZIPPED) {
-        char *buf = talloc_vasprintf(fp, fmt, ap);
-        /* Problem in zlib forbids gzprintf of more than 4095 characters
-         * at a time.  Use gzwrite to get around this, assuming that it
-         * doesn't have the same problem... */
-        rtn = gzwrite(fp->fileptr.gp, buf, strlen(buf));
-        talloc_free(buf);
-    } else if (fp->filetype == BZIPPED) {
-        char *buf = talloc_vasprintf(fp, fmt, ap);
-        rtn = BZ2_bzwrite(fp->fileptr.bp, buf, strlen(buf));
-        talloc_free(buf);
-    } else {
-        rtn = vfprintf(fp->fileptr.fp, fmt, ap);
-    }
-    return rtn;
+    return fp->vptr->vprintf(fp, fmt, ap);
 }
 
 /*! \brief Print a formatted string to the file
@@ -948,16 +444,11 @@ int cfprintf(cfile *fp, const char *fmt, ...) {
  */
  
 int cfread(cfile *fp, void *ptr, size_t size, size_t num) {
-    if (!fp) return 0;
-    int rtn;
-    if (fp->filetype == GZIPPED) {
-        rtn = gzread(fp->fileptr.gp, ptr, size * num);
-    } else if (fp->filetype == BZIPPED) {
-        rtn = BZ2_bzread(fp->fileptr.bp, ptr, size * num);
-    } else {
-        rtn = fread(ptr, size, num, fp->fileptr.fp);
+    if (!fp || !fp->vptr) {
+        errno = EINVAL;
+        return -1;
     }
-    return rtn;
+    return fp->vptr->read(fp, ptr, size, num);
 }
 
 /*! \brief Write a block of data from the file.
@@ -972,16 +463,11 @@ int cfread(cfile *fp, void *ptr, size_t size, size_t num) {
  */
  
 int cfwrite(cfile *fp, const void *ptr, size_t size, size_t num) {
-    if (!fp) return 0;
-    int rtn;
-    if (fp->filetype == GZIPPED) {
-        rtn = gzwrite(fp->fileptr.gp, ptr, size * num);
-    } else if (fp->filetype == BZIPPED) {
-        rtn = BZ2_bzwrite(fp->fileptr.bp, ptr, size * num);
-    } else {
-        rtn = fwrite(ptr, size, num, fp->fileptr.fp);
+    if (!fp || !fp->vptr) {
+        errno = EINVAL;
+        return -1;
     }
-    return rtn;
+    return fp->vptr->write(fp, ptr, size, num);
 }
 
 /*! \brief Flush the file's output buffer.
@@ -997,16 +483,11 @@ int cfwrite(cfile *fp, const void *ptr, size_t size, size_t num) {
  */
  
 int cfflush(cfile *fp) {
-    if (!fp) return 0;
-    int rtn;
-    if (fp->filetype == GZIPPED) {
-        rtn = gzflush(fp->fileptr.gp, Z_SYNC_FLUSH);
-    } else if (fp->filetype == BZIPPED) {
-        rtn = BZ2_bzflush(fp->fileptr.bp);
-    } else {
-        rtn = fflush(fp->fileptr.fp);
+    if (!fp || !fp->vptr) {
+        errno = EINVAL;
+        return -1;
     }
-    return rtn;
+    return fp->vptr->flush(fp);
 }
 
 /*! \brief Close the given file handle.
@@ -1018,7 +499,10 @@ int cfflush(cfile *fp) {
  */
  
 int cfclose(cfile *fp) {
-    if (!fp) return 0;
+    if (!fp || !fp->vptr) {
+        errno = EINVAL;
+        return -1;
+    }
     /* Now, according to theory, the talloc destructor should close the
      * file correctly and pass back it's return code */
     return talloc_free(fp);
