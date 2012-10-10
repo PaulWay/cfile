@@ -409,6 +409,10 @@ char *bzip2_gets(cfile *fp, char *str, int len) {
  * \return The success of the file write operation.
  * \todo Should we be reusing a buffer rather than allocating one each time?
  */
+
+int bzip2_vprintf(cfile *fp, const char *fmt, va_list ap)
+  __attribute ((format (printf, 2, 0)));
+
 int bzip2_vprintf(cfile *fp, const char *fmt, va_list ap) {
     cfile_bzip2 *cfbp = (cfile_bzip2 *)fp;
     int rtn;
@@ -432,7 +436,7 @@ int bzip2_vprintf(cfile *fp, const char *fmt, va_list ap) {
  * \return The success of the file read operation.
  */
  
-int bzip2_read(cfile *fp, void *ptr, size_t size, size_t num) {
+ssize_t bzip2_read(cfile *fp, void *ptr, size_t size, size_t num) {
     cfile_bzip2 *cfbp = (cfile_bzip2 *)fp;
     return BZ2_bzread(cfbp->bp, ptr, size * num);
 }
@@ -448,7 +452,7 @@ int bzip2_read(cfile *fp, void *ptr, size_t size, size_t num) {
  * \return The success of the file write operation.
  */
  
-int bzip2_write(cfile *fp, const void *ptr, size_t size, size_t num) {
+ssize_t bzip2_write(cfile *fp, const void *ptr, size_t size, size_t num) {
     cfile_bzip2 *cfbp = (cfile_bzip2 *)fp;
     return BZ2_bzwrite(cfbp->bp, ptr, size * num);
 }
@@ -503,14 +507,14 @@ int bzip2_close(cfile *fp) {
 
 static const cfile_vtable bzip2_cfile_table = {
     sizeof(bzip2_cfile_table),
-    &bzip2_size,
-    &bzip2_eof,
-    &bzip2_gets,
-    &bzip2_vprintf,
-    &bzip2_read,
-    &bzip2_write,
-    &bzip2_flush,
-    &bzip2_close,
+    bzip2_size,
+    bzip2_eof,
+    bzip2_gets,
+    bzip2_vprintf,
+    bzip2_read,
+    bzip2_write,
+    bzip2_flush,
+    bzip2_close,
     "BZip2 file"
 };
 

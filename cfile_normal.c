@@ -21,7 +21,7 @@ typedef struct cfile_normal {
     FILE *fp;        /*< the actual uncompressed file pointer */
 } cfile_normal;
 
-static const cfile_vtable normal_cfile_table;
+static cfile_vtable normal_cfile_table;
 
 /*! \brief Open a file for reading or writing
  *
@@ -181,6 +181,10 @@ char *normal_gets(cfile *fp, char *str, int len) {
  * \return The success of the file write operation.
  * \todo Should we be reusing a buffer rather than allocating one each time?
  */
+
+int normal_vprintf(cfile *fp, const char *fmt, va_list ap)
+  __attribute ((format (printf, 2, 0)));
+
 int normal_vprintf(cfile *fp, const char *fmt, va_list ap) {
     cfile_normal *cfnp = (cfile_normal *)fp;
     return vfprintf(cfnp->fp, fmt, ap);
@@ -200,7 +204,7 @@ int normal_vprintf(cfile *fp, const char *fmt, va_list ap) {
  * \return The success of the file read operation.
  */
  
-int normal_read(cfile *fp, void *ptr, size_t size, size_t num) {
+ssize_t normal_read(cfile *fp, void *ptr, size_t size, size_t num) {
     cfile_normal *cfnp = (cfile_normal *)fp;
     return fread(ptr, size, num, cfnp->fp);
 }
@@ -216,7 +220,7 @@ int normal_read(cfile *fp, void *ptr, size_t size, size_t num) {
  * \return The success of the file write operation.
  */
  
-int normal_write(cfile *fp, const void *ptr, size_t size, size_t num) {
+ssize_t normal_write(cfile *fp, const void *ptr, size_t size, size_t num) {
     cfile_normal *cfnp = (cfile_normal *)fp;
     return fwrite(ptr, size, num, cfnp->fp);
 }
@@ -253,16 +257,16 @@ int normal_close(cfile *fp) {
 
 /*! \brief The function dispatch table for normal files */
 
-static const cfile_vtable normal_cfile_table = {
+static cfile_vtable normal_cfile_table = {
     sizeof(cfile_normal),
-    &normal_size,
-    &normal_eof,
-    &normal_gets,
-    &normal_vprintf,
-    &normal_read,
-    &normal_write,
-    &normal_flush,
-    &normal_close,
+    normal_size,
+    normal_eof,
+    normal_gets,
+    normal_vprintf,
+    normal_read,
+    normal_write,
+    normal_flush,
+    normal_close,
     "Normal file"
 };
 

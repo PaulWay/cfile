@@ -116,6 +116,10 @@ char *gzip_gets(cfile *fp, char *str, int len) {
  * \return The success of the file write operation.
  * \todo Should we be reusing a buffer rather than allocating one each time?
  */
+
+int gzip_vprintf(cfile *fp, const char *fmt, va_list ap)
+  __attribute ((format (printf, 2, 0)));
+
 int gzip_vprintf(cfile *fp, const char *fmt, va_list ap) {
     cfile_gzip *cfzp = (cfile_gzip *)fp;
     int rtn;
@@ -142,7 +146,7 @@ int gzip_vprintf(cfile *fp, const char *fmt, va_list ap) {
  * \return The success of the file read operation.
  */
  
-int gzip_read(cfile *fp, void *ptr, size_t size, size_t num) {
+ssize_t gzip_read(cfile *fp, void *ptr, size_t size, size_t num) {
     cfile_gzip *cfzp = (cfile_gzip *)fp;
     return gzread(cfzp->gp, ptr, size * num);
 }
@@ -158,7 +162,7 @@ int gzip_read(cfile *fp, void *ptr, size_t size, size_t num) {
  * \return The success of the file write operation.
  */
  
-int gzip_write(cfile *fp, const void *ptr, size_t size, size_t num) {
+ssize_t gzip_write(cfile *fp, const void *ptr, size_t size, size_t num) {
     cfile_gzip *cfzp = (cfile_gzip *)fp;
     return gzwrite(cfzp->gp, ptr, size * num);
 }
@@ -197,14 +201,14 @@ int gzip_close(cfile *fp) {
 
 static const cfile_vtable gzip_cfile_table = {
     sizeof(gzip_cfile_table),
-    &gzip_size,
-    &gzip_eof,
-    &gzip_gets,
-    &gzip_vprintf,
-    &gzip_read,
-    &gzip_write,
-    &gzip_flush,
-    &gzip_close,
+    gzip_size,
+    gzip_eof,
+    gzip_gets,
+    gzip_vprintf,
+    gzip_read,
+    gzip_write,
+    gzip_flush,
+    gzip_close,
     "GZip file"
 };
 

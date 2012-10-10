@@ -26,7 +26,7 @@ typedef struct cfile_vtable {
     /*! get a string of given length */
     char *(*gets)(cfile *fp, char *str, int len);
     /*! print a line of variable args */
-    int   (*vprintf)(cfile *fp, const char *fmt, va_list ap);
+    int   (*vprintf)(cfile *fp, const char *fmt, va_list ap) __attribute ((format (printf, 2, 0)));
     /*! read bytes from the file */
     ssize_t (*read)(cfile *fp, void *ptr, size_t size, size_t num);
     /*! write bytes to the file */
