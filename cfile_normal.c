@@ -21,7 +21,7 @@ typedef struct cfile_normal {
     FILE *fp;        /*< the actual uncompressed file pointer */
 } cfile_normal;
 
-static cfile_vtable normal_cfile_table;
+static const cfile_vtable normal_cfile_table;
 
 /*! \brief Open a file for reading or writing
  *
@@ -257,7 +257,7 @@ int normal_close(cfile *fp) {
 
 /*! \brief The function dispatch table for normal files */
 
-static cfile_vtable normal_cfile_table = {
+static const cfile_vtable normal_cfile_table = {
     sizeof(cfile_normal),
     normal_size,
     normal_eof,
