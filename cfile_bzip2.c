@@ -454,7 +454,12 @@ ssize_t bzip2_read(cfile *fp, void *ptr, size_t size, size_t num) {
  
 ssize_t bzip2_write(cfile *fp, const void *ptr, size_t size, size_t num) {
     cfile_bzip2 *cfbp = (cfile_bzip2 *)fp;
-    return BZ2_bzwrite(cfbp->bp, ptr, size * num);
+    /* bzwrite takes a void *, where we have a const void *.  Clone it to
+       avoid unsightly compiler warnings */
+    char *my_ptr = talloc_strdup(fp, ptr);
+    ssize_t rtn = BZ2_bzwrite(cfbp->bp, my_ptr, size * num);
+    talloc_free(my_ptr);
+    return rtn;
 }
 
 /*! \brief Flush the file's output buffer.
