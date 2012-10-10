@@ -36,7 +36,7 @@ typedef struct cfile_vtable {
     /*! close the file, flushing the contents to disk */
     int   (*close)(cfile *fp); 
     /*! what implementation are we using here? */  
-    char *implementation_name;
+    const char *implementation_name;
 } cfile_vtable;
 
 /*! \brief The cfile 'class'
@@ -44,7 +44,7 @@ typedef struct cfile_vtable {
  */
 
 typedef struct cfile {
-    cfile_vtable *vptr; /*< pointer to virtual function table */
+    const cfile_vtable *vptr; /*< pointer to virtual function table */
     char *filename;     /*< the name of this file, since we always have one */
 } cfile;
 
