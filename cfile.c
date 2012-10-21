@@ -140,7 +140,11 @@ void *pwlib_context = NULL;
  *  function table.
  * \return The allocated memory, or NULL if we couldn't allocate.
  */
-cfile *cfile_alloc(const cfile_vtable *vptr, const char *name, const char *mode) {
+cfile *cfile_alloc(
+    const cfile_vtable *vptr, /*< the implementation-specific pointer table */
+    const char *name,         /*< the name of the file being opened */
+    const char *mode          /*< the mode being used to open the file */
+) {
     if (!pwlib_context) {
         pwlib_context = talloc_init("CFile Talloc context");
     }
@@ -214,6 +218,7 @@ cfile *cfopen(const char *name, /*!< The name of the file to open.
 #endif
     /* Even though zlib allows reading of uncompressed files, let's
      * not complicate things too much at this stage :-) */
+    /* todo: make sure these match at end of file name */
     if        (strstr(name,".gz" ) != NULL) {
         return gzip_open(name, mode);
     } else if (strstr(name,".bz2") != NULL) {
