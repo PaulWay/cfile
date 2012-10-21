@@ -172,7 +172,7 @@ static int bzip_attribute_size(cfile *fp) {
             ,(long)sp.st_mtime
         );
 #endif
-        return sp.st_mtime < xattr.time_stamp ? xattr.file_size : 0;
+        return sp.st_mtime <= xattr.time_stamp ? xattr.file_size : 0;
     } else {
 #ifdef DEBUG_XATTR
     fprintf(stderr, "stat on file bad.\n"
@@ -454,12 +454,8 @@ ssize_t bzip2_read(cfile *fp, void *ptr, size_t size, size_t num) {
  
 ssize_t bzip2_write(cfile *fp, const void *ptr, size_t size, size_t num) {
     cfile_bzip2 *cfbp = (cfile_bzip2 *)fp;
-    /* bzwrite takes a void *, where we have a const void *.  Clone it to
-       avoid unsightly compiler warnings */
-    /* todo: integer overflow protection */
-    char *my_ptr = talloc_memdup(fp, ptr, size * num);
-    ssize_t rtn = BZ2_bzwrite(cfbp->bp, my_ptr, size * num);
-    talloc_free(my_ptr);
+    ssize_t rtn = BZ2_bzwrite(cfbp->bp, ptr, size * num);
+    /* talloc_free(my_ptr); */
     return rtn;
 }
 
