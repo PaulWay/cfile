@@ -1,5 +1,23 @@
-/*! \file cfile_normal.c
- *  \brief Implementation for a normal uncompressed file.
+/*
+ * cfile - compressed file read/write library
+ * Copyright (C) 2006 Paul Wayper
+ * Copyright (C) 2012 Peter Miller
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or (at
+ * your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ *
+ *
+ * \brief Implementation for a normal uncompressed file.
  */
 
 #include <stdarg.h>
@@ -17,81 +35,10 @@
  * We only need to store the actual file pointer.
  */
 typedef struct cfile_normal {
-    cfile inherited; /*< our inherited function table */
+    cfile *vptr;     /*< something or other */
+    cfile inherited; /*< our inherited cfile structure */
     FILE *fp;        /*< the actual uncompressed file pointer */
 } cfile_normal;
-
-static const cfile_vtable normal_cfile_table;
-
-/*! \brief Open a file for reading or writing
- *
- *  Open the given file using the given mode.  Opens the file and
- *  returns a cfile handle to it.
- *
- * \return A successfully created file handle, or NULL on failure.
- */
-cfile *normal_open(const char *name, /*!< The name of the file to open.  
-                    If this is "-", then stdin is read from or stdout is
-                    written to, as appropriate (both being used uncompressed.) */
-                   const char *mode) /*!< can be any mode that fopen allows */
-{
-    /* If we have a '-' as a file name, dup stdin or stdout */
-    FILE *own_file;
-    if (strcmp(name, "-") == 0) {
-        if        (strstr(mode, "r") != 0) {
-            own_file = fdopen(fileno(stdin), mode);
-        } else if ((strstr(mode, "w") != 0)
-               ||  (strstr(mode, "a") != 0)) {
-            own_file = fdopen(fileno(stdout), mode);
-        } else {
-            errno = EINVAL;
-            return NULL;
-        }
-        if (! own_file) {
-            errno = EINVAL;
-            return NULL;
-        }
-    } else {
-        own_file = fopen(name, mode);
-        if (! own_file) {
-            errno = EINVAL;
-            return NULL;
-        }
-    }
-    cfile_normal *cfnp = (cfile_normal *)cfile_alloc(&normal_cfile_table, 
-     name, mode);
-    if (!cfnp) {
-        errno = EINVAL;
-        return NULL;
-    }
-    cfnp->fp = own_file;
-    return (cfile *)cfnp;
-}
-
-/*! \brief Open a file from a file descriptor
- *
- *  Allows you to open the file specified by the given file descriptor,
- *  with the same mode options as a regular file.  Originally necessary
- *  to allow access to stdin and stdout, but with the current handling
- *  of "-" by cfopen this should be mostly unnecessary.
- * \param filedesc An integer file descriptor number.
- * \param mode The mode to open the file in ("r" for read, "w" for write).
- * \return A successfully created file handle, or NULL on failure.
- */
-
-cfile *normal_dopen(const int filedesc, const char *mode) {
-    FILE *own_file = fdopen(filedesc, mode);
-    char *name = talloc_asprintf(pwlib_context,
-     "file descriptor %d (mode %s)", filedesc, mode);
-    cfile_normal *cfnp = (cfile_normal *)cfile_alloc(&normal_cfile_table,
-     name, mode);
-    if (!cfnp) {
-        errno = EINVAL;
-        return NULL;
-    }
-    cfnp->fp = own_file;
-    return (cfile *)cfnp;
-}
 
 /*! \brief Returns the _uncompressed_ file size
  *
@@ -124,7 +71,7 @@ cfile *normal_dopen(const int filedesc, const char *mode) {
  * \return The number of bytes in the uncompressed file.
  */
 
-off_t normal_size(cfile *fp) {
+static off_t normal_size(cfile *fp) {
     cfile_normal *cfnp = (cfile_normal *)fp;
     struct stat sp;
     if (stat(cfnp->inherited.filename, &sp) == 0) {
@@ -144,7 +91,7 @@ off_t normal_size(cfile *fp) {
  * \return True (1) if the file has reached EOF, False (0) if not.
  */
 
-int normal_eof(cfile *fp) {
+static int normal_eof(cfile *fp) {
     cfile_normal *cfnp = (cfile_normal *)fp;
     return feof(cfnp->fp);
 }
@@ -163,8 +110,8 @@ int normal_eof(cfile *fp) {
  * \see bz_fgetc
  * \return A pointer to the string thus read.
  */
- 
-char *normal_gets(cfile *fp, char *str, int len) {
+
+static char *normal_gets(cfile *fp, char *str, int len) {
     cfile_normal *cfnp = (cfile_normal *)fp;
     return fgets(str, len, cfnp->fp);
 }
@@ -182,10 +129,10 @@ char *normal_gets(cfile *fp, char *str, int len) {
  * \todo Should we be reusing a buffer rather than allocating one each time?
  */
 
-int normal_vprintf(cfile *fp, const char *fmt, va_list ap)
+static int normal_vprintf(cfile *fp, const char *fmt, va_list ap)
   __attribute ((format (printf, 2, 0)));
 
-int normal_vprintf(cfile *fp, const char *fmt, va_list ap) {
+static int normal_vprintf(cfile *fp, const char *fmt, va_list ap) {
     cfile_normal *cfnp = (cfile_normal *)fp;
     return vfprintf(cfnp->fp, fmt, ap);
 }
@@ -203,8 +150,8 @@ int normal_vprintf(cfile *fp, const char *fmt, va_list ap) {
  * \param num The number of structures to read.
  * \return The success of the file read operation.
  */
- 
-ssize_t normal_read(cfile *fp, void *ptr, size_t size, size_t num) {
+
+static ssize_t normal_read(cfile *fp, void *ptr, size_t size, size_t num) {
     cfile_normal *cfnp = (cfile_normal *)fp;
     return fread(ptr, size, num, cfnp->fp);
 }
@@ -219,8 +166,10 @@ ssize_t normal_read(cfile *fp, void *ptr, size_t size, size_t num) {
  * \param num The number of structures to write.
  * \return The success of the file write operation.
  */
- 
-ssize_t normal_write(cfile *fp, const void *ptr, size_t size, size_t num) {
+
+static ssize_t normal_write(cfile *fp, const void *ptr, size_t size,
+    size_t num)
+{
     cfile_normal *cfnp = (cfile_normal *)fp;
     return fwrite(ptr, size, num, cfnp->fp);
 }
@@ -236,8 +185,8 @@ ssize_t normal_write(cfile *fp, const void *ptr, size_t size, size_t num) {
  *  to write to the nearest byte boundary without unduly impacting
  *  compression.
  */
- 
-int normal_flush(cfile *fp) {
+
+static int normal_flush(cfile *fp) {
     cfile_normal *cfnp = (cfile_normal *)fp;
     return fflush(cfnp->fp);
 }
@@ -249,14 +198,17 @@ int normal_flush(cfile *fp) {
  * \param fp The file handle to close.
  * \return the success of the file close operation.
  */
- 
-int normal_close(cfile *fp) {
+
+static int normal_close(cfile *fp) {
     cfile_normal *cfnp = (cfile_normal *)fp;
+    if (cfnp->fp == stdin || cfnp->fp == stdout || cfnp-> fp == stderr)
+        return 0;
     return fclose(cfnp->fp);
 }
 
-/*! \brief The function dispatch table for normal files */
 
+/*! \brief The function dispatch table for normal files
+ */
 static const cfile_vtable normal_cfile_table = {
     sizeof(cfile_normal),
     normal_size,
@@ -271,3 +223,83 @@ static const cfile_vtable normal_cfile_table = {
 };
 
 
+/*! \brief Open a file for reading or writing
+ *
+ *  Open the given file using the given mode.  Opens the file and
+ *  returns a cfile handle to it.
+ *
+ * @param name
+ *     The name of the file to open.
+ *     If this is "-", then stdin is read from or stdout is
+ *     written to, as appropriate (both being used uncompressed).
+ * @param mode
+ *     can be any mode that fopen allows
+ * @return
+ *     A successfully created file handle, or NULL on failure.
+ */
+cfile *normal_open(const char *name, const char *mode)
+{
+    /* If we have a '-' as a file name, dup stdin or stdout */
+    FILE *own_file;
+    if (strcmp(name, "-") == 0) {
+        if (strstr(mode, "r") != 0) {
+            own_file = stdin;
+        } else if ((strstr(mode, "w") != 0)
+               ||  (strstr(mode, "a") != 0)) {
+            own_file = stdout;
+        } else {
+            errno = EINVAL;
+            return NULL;
+        }
+        if (! own_file) {
+            errno = EINVAL;
+            return NULL;
+        }
+    } else {
+        own_file = fopen(name, mode);
+        if (! own_file) {
+            /* leave operating system error unmolested */
+            return NULL;
+        }
+    }
+    cfile_normal *cfnp = (cfile_normal *)cfile_alloc(&normal_cfile_table,
+        name, mode);
+    if (!cfnp) {
+        errno = EINVAL;
+        return NULL;
+    }
+    cfnp->fp = own_file;
+    return (cfile *)cfnp;
+}
+
+/*! \brief Open a file from a file descriptor
+ *
+ *  Allows you to open the file specified by the given file descriptor,
+ *  with the same mode options as a regular file.  Originally necessary
+ *  to allow access to stdin and stdout, but with the current handling
+ *  of "-" by cfopen this should be mostly unnecessary.
+ *
+ * \param filedesc
+ *     An integer file descriptor number.
+ * \param mode
+ *     The mode to open the file in ("r" for read, "w" for write).
+ * \return
+ *     A successfully created file handle, or NULL on failure.
+ */
+
+cfile *normal_dopen(const int filedesc, const char *mode) {
+    FILE *own_file = fdopen(filedesc, mode);
+    char *name = talloc_asprintf(pwlib_context,
+     "file descriptor %d (mode %s)", filedesc, mode);
+    cfile_normal *cfnp = (cfile_normal *)cfile_alloc(&normal_cfile_table,
+     name, mode);
+    if (!cfnp) {
+        errno = EINVAL;
+        return NULL;
+    }
+    cfnp->fp = own_file;
+    return (cfile *)cfnp;
+}
+
+
+/* vim: set ts=8 sw=4 et : */
