@@ -3,6 +3,7 @@
  * This file is part of The PaulWay Libraries
  *
  * Copyright (C) 2006 - Paul Wayper (paulway@mabula.net)
+ * Copyright (C) 2012 Peter Miller
  *
  * The PaulWay Libraries are free software; you can redistribute it
  * and/or modify it under the terms of the GNU General Public License
@@ -15,9 +16,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with The PaulWay Libraries; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, 
- * Boston, MA  02110-1301  USA
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
 /** \file test-cat.c
@@ -30,57 +29,129 @@
  * (or whatever your local compressed-file-reading-diff variant is).
  * If the output is different, then obviously the cfile library is wrong!
  */
- 
-#include <stdio.h>
-#include <errno.h>
-#include <string.h>
-#include <stdarg.h>
 
+#include <errno.h>
+#include <getopt.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
 #include <talloc.h>
 
 #include "cfile.h"
 
-void *context = NULL;
+static void *context = NULL;
 
-cfile *out = NULL;
+static cfile *out = NULL;
 
 void write_file (const char *name) {
     /* write_file - read the named file and write it to stdout
      */
     cfile *in = cfopen(name, "r");
     if (! in) {
-        fprintf(stderr,
-            "Error: can't open %s for reading: %s!\n",
-            name, strerror(errno)
-        );
+        perror(name);
+        exit(EXIT_FAILURE);
     }
     char *line = NULL;
     int linelen = 0;
-    while (! cfeof(in)) {
+    for (;;) {
         line = cfgetline(in, line, &linelen);
-        if (! line) break;
+        if (! line)
+            break;
         cfprintf(out, "%s", line);
     }
-    cfclose(in);
-} /* write_file */
+    if (cfclose(in))
+    {
+        /* e.g. ENOSPC */
+        perror(name);
+        exit(EXIT_FAILURE);
+    }
+}
+
+static void usage(void) {
+    fprintf(stderr, "Usage: test-cat [ <option>...][ <filename>... ]\n");
+    exit(EXIT_FAILURE);
+}
+
 
 int main (int argc, char *argv[])
 {
-	context = talloc_init("main test-cat context");
-	cf_set_context(context);
-	out = cfdopen(1, "w");
-	if (! out) {
-	    fprintf(stderr,
-	        "Error: Can't open output: %s!\n", strerror(errno)
-	    );
-	    talloc_free(context);
-	    return 1;
-	}
-	int arg;
-	for (arg = 1; arg < argc; arg += 1) {
-	    write_file(argv[arg]);
-	}
-	cfclose(out);
-	talloc_free(context);
-	return 0;
+    int report_flag = 0;
+    talloc_enable_leak_report();
+    context = talloc_init("main test-cat context");
+    cf_set_context(context);
+    for (;;)
+    {
+        static const struct option options[] =
+        {
+            { "output", 1, 0, 'o' },
+            { "talloc-leak-report", 0, 0, 'r' },
+            { 0, 0, 0, 0 }
+        };
+        int c = getopt_long(argc, argv, "o:r", options, 0);
+        if (c == -1)
+            break;
+        switch (c)
+        {
+        case 'o':
+            if (out)
+                usage();
+            out = cfopen(optarg, "w");
+            if (!out)
+            {
+                perror(optarg);
+                exit(EXIT_FAILURE);
+            }
+            break;
+
+        case 'r':
+            report_flag = 1;
+            break;
+
+        default:
+            usage();
+        }
+    }
+    if (!out)
+    {
+        out = cfdopen(1, "w");
+        if (!out)
+        {
+            perror("cfdopen");
+            talloc_free(context);
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    if (optind == argc)
+    {
+        write_file("-");
+    }
+    else
+    {
+        for (;;)
+        {
+            write_file(argv[optind++]);
+            if (optind >= argc)
+                break;
+        }
+    }
+
+    if (cfclose(out))
+    {
+        perror("cfclose");
+        exit(EXIT_FAILURE);
+    }
+    talloc_free(context);
+
+    if (report_flag)
+    {
+        /*
+         * List what the talloc tree looks like, from the top level.
+         */
+        talloc_report_full(NULL, stderr);
+    }
+    return EXIT_SUCCESS;
 }
+
+
+/* vim: set ts=8 sw=4 et : */
