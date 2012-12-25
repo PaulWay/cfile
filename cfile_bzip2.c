@@ -454,7 +454,7 @@ ssize_t bzip2_read(cfile *fp, void *ptr, size_t size, size_t num) {
  
 ssize_t bzip2_write(cfile *fp, const void *ptr, size_t size, size_t num) {
     cfile_bzip2 *cfbp = (cfile_bzip2 *)fp;
-    ssize_t rtn = BZ2_bzwrite(cfbp->bp, ptr, size * num);
+    ssize_t rtn = BZ2_bzwrite(cfbp->bp, (void *)ptr, size * num);
     /* talloc_free(my_ptr); */
     return rtn;
 }
