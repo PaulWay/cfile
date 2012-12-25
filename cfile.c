@@ -2,7 +2,8 @@
  * cfile.c
  * This file is part of The PaulWay Libraries
  *
- * Copyright (C) 2006 - Paul Wayper (paulway@mabula.net)
+ * Copyright (C) 2006 Paul Wayper <paulway@mabula.net>
+ * Copyright (C) 2012 Peter Miller
  *
  * The PaulWay Libraries are free software; you can redistribute it
  * and/or modify it under the terms of the GNU General Public License
@@ -15,9 +16,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with The PaulWay Libraries; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, 
- * Boston, MA  02110-1301  USA
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
 /*! \file cfile.c
@@ -115,7 +114,7 @@
  *  So the whole thing would be a 'drop in' replacement for stdio,
  *  rather than requiring modification of existing code.
  */
- 
+
 #include <stdarg.h>
 #include <string.h>
 #include <stdlib.h>
@@ -138,13 +137,19 @@ void *pwlib_context = NULL;
  *  Allocate an implementation-specific amount of memory to this pointer,
  *  and fill the generic table structure with the given implementation's
  *  function table.
- * \return The allocated memory, or NULL if we couldn't allocate.
+ *
+ * @param vptr
+ *     the implementation-specific pointer table
+ * @param name
+ *     the name of the file being opened
+ * @param mode
+ *     the mode being used to open the file
+ * @return
+ *     The allocated memory, or NULL if we couldn't allocate.
  */
-cfile *cfile_alloc(
-    const cfile_vtable *vptr, /*< the implementation-specific pointer table */
-    const char *name,         /*< the name of the file being opened */
-    const char *mode          /*< the mode being used to open the file */
-) {
+cfile *cfile_alloc(const cfile_vtable *vptr, const char *name,
+    const char *mode)
+{
     if (!pwlib_context) {
         pwlib_context = talloc_init("CFile Talloc context");
     }
@@ -165,8 +170,10 @@ cfile *cfile_alloc(
  *  this in turn means that when the caller frees our memory all cfiles will
  *  be automatically closed
  *
- * \param parent_context the talloc context of the caller.
- * \return nothing
+ * \param parent_context
+ *     the talloc context of the caller.
+ * \return
+ *     nothing
  */
 void cf_set_context(void *parent_context) {
     if (pwlib_context) {
@@ -185,13 +192,16 @@ void cf_set_context(void *parent_context) {
  *  returns a cfile handle to it.  Mode can be any type that the actual file
  *  supports.
  *
- * \return A successfully created file handle, or NULL on failure.
+ * @param name
+ *     The name of the file to open.  If this is "-", then stdin is read
+ *     from or stdout is written to, as appropriate (both being used
+ *     uncompressed).
+ * @param mode
+ *     "r" to specify reading, "w" for writing.
+ * @return
+ *     A successfully created file handle, or NULL on failure.
  */
-cfile *cfopen(const char *name, /*!< The name of the file to open.  
-               If this is "-", then stdin is read from or stdout is
-               written to, as appropriate (both being used uncompressed.) */
-              const char *mode) /*!< "r" to specify reading, "w" for writing. */
-{
+cfile *cfopen(const char *name, const char *mode) {
     /* If we have a '-' as a file name, treat it as uncompressed (for now) */
     if (strcmp(name, "-") == 0) {
         return normal_open(name, mode);
@@ -214,7 +224,7 @@ cfile *cfopen(const char *name, /*!< The name of the file to open.
             magic_close(checker);
             return rtn;
         }
-    } 
+    }
 #endif
     /* Even though zlib allows reading of uncompressed files, let's
      * not complicate things too much at this stage :-) */
@@ -234,11 +244,16 @@ cfile *cfopen(const char *name, /*!< The name of the file to open.
  *  with the same mode options as a regular file.  Originally necessary
  *  to allow access to stdin and stdout, but with the current handling
  *  of "-" by cfopen this should be mostly unnecessary.
- * \param filedesc An integer file descriptor number.
- * \param mode The mode to open the file in ("r" for read, "w" for write).
- * \return A successfully created file handle, or NULL on failure.
- * \todo Make this detect a compressed input stream, and allow setting of
- *  the compression type via the mode parameter for an output stream.
+ *
+ * \param filedesc
+ *     An integer file descriptor number.
+ * \param mode
+ *     The mode to open the file in ("r" for read, "w" for write).
+ * \return
+ *     A successfully created file handle, or NULL on failure.
+ * \todo
+ *     Make this detect a compressed input stream, and allow setting of
+ *     the compression type via the mode parameter for an output stream.
  */
 
 cfile *cfdopen(int filedesc, const char *mode) {
@@ -254,8 +269,10 @@ cfile *cfdopen(int filedesc, const char *mode) {
  *  compressed file will give you a much lower figure.  So here we
  *  extract the size of the uncompressed content of the file.
  *
- * \param fp The file handle to check
- * \return The number of bytes in the uncompressed file.
+ * \param fp
+ *     The file handle to check
+ * \return
+ *     The number of bytes in the uncompressed file.
  */
 
 off_t cfsize(cfile *fp) {
@@ -268,8 +285,10 @@ off_t cfsize(cfile *fp) {
 
 /*! \brief Returns true if we've reached the end of the file being read.
  *
- * \param fp The file handle to check.
- * \return True (1) if the file has reached EOF, False (0) if not.
+ * \param fp
+ *     The file handle to check.
+ * \return
+ *     True (1) if the file has reached EOF, False (0) if not.
  */
 
 int cfeof(cfile *fp) {
@@ -282,9 +301,17 @@ int cfeof(cfile *fp) {
 
 /*! \brief Get a string from the file, up to a maximum length or newline.
  *
- * \return A pointer to the string thus read.
+ * @param fp
+ *     The file handle to read from.
+ * @param str
+ *     A character array to read the line into, and optionally
+ *     extend.
+ * @param len
+ *     The size of the #str in bytes.
+ * @return
+ *     A pointer to the string thus read.
  */
- 
+
 char *cfgets(cfile *fp, char *str, int len) {
     if (!fp || !fp->vptr) {
         errno = EINVAL;
@@ -294,7 +321,8 @@ char *cfgets(cfile *fp, char *str, int len) {
 }
 
 /*! Macro to check whether the line is terminated by a newline or equivalent */
-#define isafullline(line,len) ((line)[(len-1)] == '\n' || (line)[(len-1)] == '\r')
+#define isafullline(line, len) \
+    ((line)[(len - 1)] == '\n' || (line)[(len - 1)] == '\r')
 
 /*! \brief Read a full line from the file, regardless of length
  *
@@ -320,17 +348,22 @@ char *cfgets(cfile *fp, char *str, int len) {
  *  buffer is currently 1024 and you want it to shrink, then set it to
  *  -1024 before calling cfgetline.  In reality, this is almost never
  *  going to be a problem.
- * \param fp The file handle to read from.
- * \param line A character array to read the line into, and optionally
- *  extend.
- * \param maxline A pointer to an integer which will contain the length of
- *  the string currently allocated.
- * \return A pointer to the line thus read.  If talloc_realloc has had to
- *  move the pointer, then this will be different from the line pointer
- *  passed in.  Therefore, the correct usage of cfgetline is something
- *  like 'line = cfgetline(fp, line, &len);'
+ *
+ * @param fp
+ *     The file handle to read from.
+ * @param line
+ *     A character array to read the line into, and optionally
+ *     extend.
+ * @param maxline
+ *     A pointer to an integer which will contain the length of
+ *     the string currently allocated.
+ * @return
+ *     A pointer to the line thus read.  If talloc_realloc has had to
+ *     move the pointer, then this will be different from the line pointer
+ *     passed in.  Therefore, the correct usage of cfgetline is something
+ *     like 'line = cfgetline(fp, line, &len);'
  */
- 
+
 char *cfgetline(cfile *fp, char *line, int *maxline) {
     /* Get a line from the file into the buffer which has been preallocated
      * to maxline.  If the line from the file is too big to fit, we extend
@@ -399,11 +432,16 @@ char *cfgetline(cfile *fp, char *line, int *maxline) {
  *  to receive a '...' argument in their own function and send it to
  *  a cfile.
  *
- * \param fp The file handle to write to.
- * \param fmt The format string to print.
- * \param ap The compiled va_list of parameters to print.
- * \return The success of the file write operation.
- * \todo Should we be reusing a buffer rather than allocating one each time?
+ * @param fp
+ *     The file handle to write to.
+ * @param fmt
+ *     The format string to print.
+ * @param ap
+ *     The compiled va_list of parameters to print.
+ * @return
+ *     The success of the file write operation.
+ * @todo
+ *     Should we be reusing a buffer rather than allocating one each time?
  */
 int cvfprintf(cfile *fp, const char *fmt, va_list ap) {
     if (!fp || !fp->vptr) {
@@ -419,10 +457,15 @@ int cvfprintf(cfile *fp, const char *fmt, va_list ap) {
  *  allocates a temporary buffer for each call.  This might seem
  *  inefficient, but otherwise we have the fgets problem all over
  *  again...
- * \param fp The file handle to write to.
- * \param fmt The format string to print.
- * \param ... Any other variables to be printed using the format string.
- * \return The success of the file write operation.
+ *
+ * @param fp
+ *     The file handle to write to.
+ * @param fmt
+ *     The format string to print.
+ * @param ...
+ *     Any other variables to be printed using the format string.
+ * @return
+ *     The success of the file write operation.
  */
 
 int cfprintf(cfile *fp, const char *fmt, ...) {
@@ -441,13 +484,19 @@ int cfprintf(cfile *fp, const char *fmt, ...) {
  *  be allocated first.  Some read functions only specify one size,
  *  we use two here because that's what fread requires (and it's
  *  better for the programmer anyway IMHO).
- * \param fp The file handle to read from.
- * \param ptr The memory to write into.
- * \param size The size of each structure in bytes.
- * \param num The number of structures to read.
- * \return The success of the file read operation.
+ *
+ * @param fp
+ *     The file handle to read from.
+ * @param ptr
+ *     The memory to write into.
+ * @param size
+ *     The size of each structure in bytes.
+ * @param num
+ *     The number of structures to read.
+ * @return
+ *     The success of the file read operation.
  */
- 
+
 int cfread(cfile *fp, void *ptr, size_t size, size_t num) {
     if (!fp || !fp->vptr) {
         errno = EINVAL;
@@ -460,13 +509,19 @@ int cfread(cfile *fp, void *ptr, size_t size, size_t num) {
  *
  *  Writes a given number of structures of a specified size into the
  *  file from the memory pointer given.
- * \param fp The file handle to write into.
- * \param ptr The memory to read from.
- * \param size The size of each structure in bytes.
- * \param num The number of structures to write.
- * \return The success of the file write operation.
+ *
+ * @param fp
+ *     The file handle to write into.
+ * @param ptr
+ *     The memory to read from.
+ * @param size
+ *     The size of each structure in bytes.
+ * @param num
+ *     The number of structures to write.
+ * @return
+ *     The success of the file write operation.
  */
- 
+
 int cfwrite(cfile *fp, const void *ptr, size_t size, size_t num) {
     if (!fp || !fp->vptr) {
         errno = EINVAL;
@@ -479,14 +534,18 @@ int cfwrite(cfile *fp, const void *ptr, size_t size, size_t num) {
  *
  *  This function flushes any data passed to write or printf but not
  *  yet written to disk.  If the file is being read, it has no effect.
- * \param fp The file handle to flush.
- * \return the success of the file flush operation.
- * \note for gzip files, under certain compression methods, flushing
- *  may result in lower compression performance.  We use Z_SYNC_FLUSH
- *  to write to the nearest byte boundary without unduly impacting
- *  compression.
+ *
+ * @param fp
+ *     The file handle to flush.
+ * @return
+ *     the success of the file flush operation.
+ * @note
+ *     for gzip files, under certain compression methods, flushing
+ *     may result in lower compression performance.  We use Z_SYNC_FLUSH
+ *     to write to the nearest byte boundary without unduly impacting
+ *     compression.
  */
- 
+
 int cfflush(cfile *fp) {
     if (!fp || !fp->vptr) {
         errno = EINVAL;
@@ -499,16 +558,25 @@ int cfflush(cfile *fp) {
  *
  *  This function frees the memory allocated for the file handle and
  *  closes the associated file.
- * \param fp The file handle to close.
- * \return the success of the file close operation.
+ *
+ * @param fp
+ *     The file handle to close.
+ * @return
+ *     the success of the file close operation.
  */
- 
+
 int cfclose(cfile *fp) {
     if (!fp || !fp->vptr) {
         errno = EINVAL;
         return -1;
     }
-    /* Now, according to theory, the talloc destructor should close the
-     * file correctly and pass back it's return code */
+
+    /*
+     * Now, according to theory, the talloc destructor should close the
+     * file correctly and pass back it's return code.
+     */
     return talloc_free(fp);
 }
+
+
+/* vim: set ts=8 sw=4 et : */
