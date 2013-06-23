@@ -21,12 +21,5 @@
 #define CFILE_BZIP2_H
 
 cfile *bzip2_open(const char *name, const char *mode);
-off_t bzip2_size(cfile *fp);
-int bzip2_eof(cfile *fp);
-char *bzip2_gets(cfile *fp, char *str, int len);
-ssize_t bzip2_read(cfile *fp, void *ptr, size_t size, size_t num);
-ssize_t bzip2_write(cfile *fp, const void *ptr, size_t size, size_t num);
-int bzip2_flush(cfile *fp);
-int bzip2_close(cfile *fp);
 
 #endif

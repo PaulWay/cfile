@@ -21,12 +21,5 @@
 #define CFILE_GZIP_H
 
 cfile *gzip_open(const char *name, const char *mode);
-off_t gzip_size(cfile *fp);
-int gzip_eof(cfile *fp);
-char *gzip_gets(cfile *fp, char *str, int len);
-ssize_t gzip_read(cfile *fp, void *ptr, size_t size, size_t num);
-ssize_t gzip_write(cfile *fp, const void *ptr, size_t size, size_t num);
-int gzip_flush(cfile *fp);
-int gzip_close(cfile *fp);
 
 #endif

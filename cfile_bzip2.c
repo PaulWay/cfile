@@ -12,6 +12,15 @@
 #include "cfile_private.h"
 #include "cfile_bzip2.h"
 
+/* Predeclare function calls */
+off_t bzip2_size(cfile *fp);
+int bzip2_eof(cfile *fp);
+char *bzip2_gets(cfile *fp, char *str, int len);
+ssize_t bzip2_read(cfile *fp, void *ptr, size_t size, size_t num);
+ssize_t bzip2_write(cfile *fp, const void *ptr, size_t size, size_t num);
+int bzip2_flush(cfile *fp);
+int bzip2_close(cfile *fp);
+
 /*! \brief The bzip2 file structure
  *
  * We only need to store the actual (zlib) file pointer.

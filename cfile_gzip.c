@@ -8,6 +8,15 @@
 #include "cfile_private.h"
 #include "cfile_gzip.h"
 
+/* Predeclare function calls */
+off_t gzip_size(cfile *fp);
+int gzip_eof(cfile *fp);
+char *gzip_gets(cfile *fp, char *str, int len);
+ssize_t gzip_read(cfile *fp, void *ptr, size_t size, size_t num);
+ssize_t gzip_write(cfile *fp, const void *ptr, size_t size, size_t num);
+int gzip_flush(cfile *fp);
+int gzip_close(cfile *fp);
+
 /*! \brief The gzip file structure
  *
  * We only need to store the actual (zlib) file pointer.
