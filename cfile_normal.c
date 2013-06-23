@@ -207,22 +207,6 @@ static int normal_close(cfile *fp) {
 }
 
 
-/*! \brief The function dispatch table for normal files
- */
-static const cfile_vtable normal_cfile_table = {
-    sizeof(cfile_normal),
-    normal_size,
-    normal_eof,
-    normal_gets,
-    normal_vprintf,
-    normal_read,
-    normal_write,
-    normal_flush,
-    normal_close,
-    "Normal file"
-};
-
-
 /*! \brief Open a file for reading or writing
  *
  *  Open the given file using the given mode.  Opens the file and
@@ -300,6 +284,21 @@ cfile *normal_dopen(const int filedesc, const char *mode) {
     cfnp->fp = own_file;
     return (cfile *)cfnp;
 }
+
+/*! \brief The function dispatch table for normal files
+ */
+static const cfile_vtable normal_cfile_table = {
+    sizeof(cfile_normal),
+    normal_size,
+    normal_eof,
+    normal_gets,
+    normal_vprintf,
+    normal_read,
+    normal_write,
+    normal_flush,
+    normal_close,
+    "Normal file"
+};
 
 
 /* vim: set ts=8 sw=4 et : */
