@@ -126,6 +126,7 @@
 #include "cfile_normal.h"
 #include "cfile_gzip.h"
 #include "cfile_bzip2.h"
+#include "cfile_null.h"
 
 /*! \brief The library's Talloc context
  */
@@ -206,6 +207,11 @@ cfile *cfopen(const char *name, const char *mode) {
     if (strcmp(name, "-") == 0) {
         return normal_open(name, mode);
     }
+
+    if (cfile_null_candidate(name)) {
+        return cfile_null_open(name, mode);
+	}
+	
 #ifdef MAGIC_NONE
     /* We can only determine the file type if it exists - i.e. is being
      * read.  Otherwise, fall through to file extension checking. */
