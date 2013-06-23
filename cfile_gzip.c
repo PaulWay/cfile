@@ -200,7 +200,7 @@ int gzip_close(cfile *fp) {
 /*! \brief The function dispatch table for gzip files */
 
 static const cfile_vtable gzip_cfile_table = {
-    sizeof(gzip_cfile_table),
+    sizeof(cfile_gzip),
     gzip_size,
     gzip_eof,
     gzip_gets,

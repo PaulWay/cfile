@@ -508,7 +508,7 @@ int bzip2_close(cfile *fp) {
 /*! \brief The function dispatch table for bzip2 files */
 
 static const cfile_vtable bzip2_cfile_table = {
-    sizeof(bzip2_cfile_table),
+    sizeof(cfile_bzip2),
     bzip2_size,
     bzip2_eof,
     bzip2_gets,
