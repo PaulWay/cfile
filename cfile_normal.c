@@ -40,6 +40,8 @@ typedef struct cfile_normal {
     FILE *fp;        /*< the actual uncompressed file pointer */
 } cfile_normal;
 
+static const cfile_vtable normal_cfile_table;
+
 /*! \brief Returns the _uncompressed_ file size
  *
  *  The common way of reporting your progress through reading a file is
