@@ -43,6 +43,8 @@ static void *context = NULL;
 
 static cfile *out = NULL;
 
+void write_file (const char *name);
+
 void write_file (const char *name) {
     /* write_file - read the named file and write it to stdout
      */
