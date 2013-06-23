@@ -1,8 +1,28 @@
+#
+# cfile - compressed file read/write library
+# Copyright (C) 2006 Paul Wayper
+# Copyright (C) 2012 Peter Miller
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or (at
+# your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
+
 # took out -Wcast-qual for now
 CFLAGS =  \
         -Wall \
         -Wshadow \
         -Werror-implicit-function-declaration \
+        -Wmissing-prototypes \
         -Wstrict-prototypes \
         -Wpointer-arith \
         -Wcast-align \
@@ -13,30 +33,52 @@ CFLAGS =  \
         -Wno-declaration-after-statement \
         -Wextra \
         -Werror
+CPPFLAGS = \
+	-I.
 
-all: libcfile.a test-cat
+all: libcfile.a all-bin
+all-bin: test-cat test_prelude
 
-cfile_normal.o: cfile_normal.c cfile_normal.h
-	gcc -c ${CFLAGS} -c cfile_normal.c -o cfile_normal.o
+cfile_normal.o: cfile.h cfile_normal.h cfile_private.h
 
-cfile_gzip.o: cfile_gzip.c cfile_gzip.h
-	gcc -c ${CFLAGS} -c cfile_gzip.c -o cfile_gzip.o
+cfile_gzip.o: cfile.h cfile_gzip.h cfile_private.h
 
-cfile_bzip2.o: cfile_bzip2.c cfile_bzip2.h
-	gcc -c ${CFLAGS} -c cfile_bzip2.c -o cfile_bzip2.o
+cfile_bzip2.o: cfile.h cfile_bzip2.h cfile_private.h
 
-cfile.o: cfile.c cfile.h
-	gcc -c ${CFLAGS} -c cfile.c -o cfile.o
+cfile.o: cfile.h cfile_private.h cfile_normal.h cfile_gzip.h cfile_bzip2.h
 
-libcfile.a: cfile.o cfile_normal.o cfile_gzip.o cfile_bzip2.o
-	rm -f $@
-	ar rv $@ cfile.o cfile_normal.o cfile_gzip.o cfile_bzip2.o
+libfiles = \
+        cfile.o \
+        cfile_bzip2.o \
+        cfile_gzip.o \
+        cfile_normal.o \
+        cfile_null.o
 
-test-cat.o: test-cat.c cfile.h
-	gcc -c ${CFLAGS} -c test-cat.c -o test-cat.o
+#        cfile_ebadf.o \
+
+libcfile.a: $(libfiles)
+	-test -f $@ && rm $@ || true
+	ar cq $@ $(libfiles)
 
 test-cat: test-cat.o libcfile.a
 	gcc -g test-cat.o -o $@ -L. -lcfile -lz -lbz2 -ltalloc
 
+_info: _info.o
+	gcc -g _info.o -o $@
+
 clean:
 	rm -f *.o *.a test-cat
+
+test_prelude: test/prelude.sh
+	cat test/prelude.sh > $@
+	chmod a+rx $@
+
+check_sources = ${wildcard test/*/*.sh }
+check_files = ${patsubst %.sh,%.es,${check_sources} }
+
+%.es: %.sh all-bin
+	PATH=`pwd`:$$PATH sh $*.sh
+
+check: $(check_files)
+
+# vim: set ts=8 sw=8 noet :
