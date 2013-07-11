@@ -1,4 +1,7 @@
 /*
+ * cfile.c
+ * This file is part of The PaulWay Libraries
+ *
  * Copyright (C) 2006 Paul Wayper <paulway@mabula.net>
  * Copyright (C) 2012 Peter Miller
  *
