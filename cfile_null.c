@@ -31,7 +31,7 @@ cfile_null_size(cfile *fp)
 }
 
 
-static int
+static bool
 cfile_null_eof(cfile *fp)
 {
     (void)fp;
@@ -40,7 +40,7 @@ cfile_null_eof(cfile *fp)
 
 
 static char *
-cfile_null_gets(cfile *fp, char *buf, int bufsiz)
+cfile_null_gets(cfile *fp, char *buf, size_t bufsiz)
 {
     (void)fp;
     (void)buf;
