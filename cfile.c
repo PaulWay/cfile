@@ -176,7 +176,7 @@ cfile *cfile_alloc(const cfile_vtable *vptr, const char *name,
  * \return
  *     nothing
  */
-void cf_set_context(void *parent_context) {
+void cfile_set_context(void *parent_context) {
     if (pwlib_context) {
         /* we've already set up a context - we need the caller to take
          * ownership of our current memory. */
@@ -202,7 +202,7 @@ void cf_set_context(void *parent_context) {
  * @return
  *     A successfully created file handle, or NULL on failure.
  */
-cfile *cfopen(const char *name, const char *mode) {
+cfile *cfile_open(const char *name, const char *mode) {
     /* If we have a '-' as a file name, treat it as uncompressed (for now) */
     if (strcmp(name, "-") == 0) {
         return normal_open(name, mode);
@@ -249,7 +249,7 @@ cfile *cfopen(const char *name, const char *mode) {
  *  Allows you to open the file specified by the given file descriptor,
  *  with the same mode options as a regular file.  Originally necessary
  *  to allow access to stdin and stdout, but with the current handling
- *  of "-" by cfopen this should be mostly unnecessary.
+ *  of "-" by cfile_open this should be mostly unnecessary.
  *
  * \param filedesc
  *     An integer file descriptor number.
@@ -262,7 +262,7 @@ cfile *cfopen(const char *name, const char *mode) {
  *     the compression type via the mode parameter for an output stream.
  */
 
-cfile *cfdopen(int filedesc, const char *mode) {
+cfile *cfile_dopen(int filedesc, const char *mode) {
     /* We don't support trying to determine the nature of a file that's
        already open */
     return normal_dopen(filedesc, mode);

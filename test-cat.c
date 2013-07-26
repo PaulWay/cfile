@@ -48,7 +48,7 @@ void write_file (const char *name);
 void write_file (const char *name) {
     /* write_file - read the named file and write it to stdout
      */
-    cfile *in = cfopen(name, "r");
+    cfile *in = cfile_open(name, "r");
     if (! in) {
         perror(name);
         exit(EXIT_FAILURE);
@@ -80,7 +80,7 @@ int main (int argc, char *argv[])
     int report_flag = 0;
     talloc_enable_leak_report();
     context = talloc_init("main test-cat context");
-    cf_set_context(context);
+    cfile_set_context(context);
     for (;;)
     {
         static const struct option options[] =
@@ -97,7 +97,7 @@ int main (int argc, char *argv[])
         case 'o':
             if (out)
                 usage();
-            out = cfopen(optarg, "w");
+            out = cfile_open(optarg, "w");
             if (!out)
             {
                 perror(optarg);
@@ -115,7 +115,7 @@ int main (int argc, char *argv[])
     }
     if (!out)
     {
-        out = cfdopen(1, "w");
+        out = cfile_dopen(1, "w");
         if (!out)
         {
             perror("cfdopen");

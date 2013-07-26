@@ -36,13 +36,13 @@
 typedef struct cfile cfile;
 
 /**
-  * The cf_set_context function is used to set cfile's owned context.
+  * The cfile_set_context function is used to set cfile's owned context.
   * This allows parents to close all cfiles.
   */
-void cf_set_context(void *parent_context);
+void cfile_set_context(void *parent_context);
 
 /**
-  * The cfopen function is used to open a file, be it compressed or
+  * The cfile_open function is used to open a file, be it compressed or
   * uncompressed.
   *
   * @param name
@@ -51,25 +51,25 @@ void cf_set_context(void *parent_context);
   * @oaram mode
   *     The open mode to use, see fopen(3) for more information.
   */
-cfile *cfopen(const char *name, const char *mode);
+cfile *cfile_open(const char *name, const char *mode);
 
 /**
-  * The cfdopen function is used to open a file descriptor.
+  * The cfile_dopen function is used to open a file descriptor.
   *
   * @param fildesc
   *     The file descriptor to access, it is treated as uncompressed.
   * @param mode
   *     The open mode to use, see fopen(3) for more information.
   */
-cfile *cfdopen(int filedesc, const char *mode);
+cfile *cfile_dopen(int filedesc, const char *mode);
 
 /**
   * The cfsize function is used to obtain the size of the (uncompressed)
   * file.
   *
   * @param fp
-  *     The cfile handle of interest, returned by one of the #cfopen or
-  *     #cfdopen functions.
+  *     The cfile handle of interest, returned by one of the #cfile_open or
+  *     #cfile_dopen functions.
   * @returns
   *     The size of the (uncompressed) file in bytes, or 0 if a
   *     determination cannot be made.
@@ -81,8 +81,8 @@ off_t cfsize(cfile *fp);
   * at the end-of-file marker.
   *
   * @param fp
-  *     The cfile handle of interest, returned by one of the #cfopen or
-  *     #cfdopen functions.
+  *     The cfile handle of interest, returned by one of the #cfile_open or
+  *     #cfile_dopen functions.
   * @returns
   *     true (non-zero) if position is at end-of-file marker,
   *     false (zero) if the file is not.
@@ -98,8 +98,8 @@ int cfeof(cfile *fp);
   * after the last character in the #str buffer.
   *
   * @param fp
-  *     The cfile handle of interest, returned by one of the #cfopen or
-  *     #cfdopen functions.
+  *     The cfile handle of interest, returned by one of the #cfile_open or
+  *     #cfile_dopen functions.
   * @param str
   *     The buffer to receive the incoming data.
   * @param len
@@ -118,8 +118,8 @@ char *cfgets(cfile *fp, char *str, int len);
   * reallocating the line buffer to be larger if necessary.
   *
   * @param fp
-  *     The cfile handle of interest, returned by one of the #cfopen or
-  *     #cfdopen functions.
+  *     The cfile handle of interest, returned by one of the #cfile_open or
+  *     #cfile_dopen functions.
   * @param str
   *     The buffer to receive the incoming data.
   * @param maxline
@@ -136,8 +136,8 @@ char *cfgetline(cfile *fp, char *line, int *maxline);
   * print a formatted string to the file.
   *
   * @param fp
-  *     The cfile handle of interest, returned by one of the #cfopen or
-  *     #cfdopen functions.
+  *     The cfile handle of interest, returned by one of the #cfile_open or
+  *     #cfile_dopen functions.
   * @param fmt
   *     The fornat control string.  It defined the order and types of
   *     the remaining arguments.  See fprintf(3) for more information.
@@ -153,8 +153,8 @@ int cfprintf(cfile *fp, const char *fmt, ...)
   * print a formatted string to the file, from another function.
   *
   * @param fp
-  *     The cfile handle of interest, returned by one of the #cfopen or
-  *     #cfdopen functions.
+  *     The cfile handle of interest, returned by one of the #cfile_open or
+  *     #cfile_dopen functions.
   * @param fmt
   *     The fornat control string.  It defined the order and types of
   *     the remaining arguments.  See fprintf(3) for more information.
@@ -173,8 +173,8 @@ int cvfprintf(cfile *fp, const char *fmt, va_list ap)
   * made.
   *
   * @param fp
-  *     The cfile handle of interest, returned by one of the #cfopen or
-  *     #cfdopen functions.
+  *     The cfile handle of interest, returned by one of the #cfile_open or
+  *     #cfile_dopen functions.
   * @param ptr
   *     Pointer to the base of the array to receive the data.
   * @param size
@@ -194,8 +194,8 @@ int cfread(cfile *fp, void *ptr, size_t size, size_t num);
   * made.
   *
   * @param fp
-  *     The cfile handle of interest, returned by one of the #cfopen or
-  *     #cfdopen functions.
+  *     The cfile handle of interest, returned by one of the #cfile_open or
+  *     #cfile_dopen functions.
   * @param ptr
   *     Pointer to the base of the array from which to take the data to
   *     be written.
@@ -215,8 +215,8 @@ int cfwrite(cfile *fp, const void *ptr, size_t size, size_t num);
   * flush the file's output buffer.
   *
   * @param fp
-  *     The cfile handle of interest, returned by one of the #cfopen or
-  *     #cfdopen functions.
+  *     The cfile handle of interest, returned by one of the #cfile_open or
+  *     #cfile_dopen functions.
   * @returns
   *     On success, 0 is returned.
   *     On failure, EOF is returned.
@@ -228,8 +228,8 @@ int cfflush(cfile *fp);
   * talloc_free'ing the pointer will also close the file.
   *
   * @param fp
-  *     The cfile handle of interest, returned by one of the #cfopen or
-  *     #cfdopen functions.
+  *     The cfile handle of interest, returned by one of the #cfile_open or
+  *     #cfile_dopen functions.
   * @returns
   *     On success, 0 is returned.
   *     On failure, EOF is returned.
