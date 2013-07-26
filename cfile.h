@@ -109,7 +109,7 @@ bool cfeof(cfile *fp);
   *     On success, returns the @a str pointer.
   *     On failure, returns the NULL pointer.
   */
-char *cfgets(cfile *fp, char *str, int len);
+char *cfgets(cfile *fp, char *str, size_t len);
 
 /**
   * The cfgetline function is a more sensible way to get a line: create

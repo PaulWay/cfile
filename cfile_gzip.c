@@ -32,7 +32,7 @@
 /* Predeclare function calls */
 off_t gzip_size(cfile *fp);
 bool gzip_eof(cfile *fp);
-char *gzip_gets(cfile *fp, char *str, int len);
+char *gzip_gets(cfile *fp, char *str, size_t len);
 ssize_t gzip_read(cfile *fp, void *ptr, size_t size, size_t num);
 ssize_t gzip_write(cfile *fp, const void *ptr, size_t size, size_t num);
 int gzip_flush(cfile *fp);
@@ -129,7 +129,7 @@ bool gzip_eof(cfile *fp) {
  * \return A pointer to the string thus read.
  */
  
-char *gzip_gets(cfile *fp, char *str, int len) {
+char *gzip_gets(cfile *fp, char *str, size_t len) {
     cfile_gzip *cfzp = (cfile_gzip *)fp;
     return gzgets(cfzp->gp, str, len);
 }

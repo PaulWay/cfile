@@ -318,7 +318,7 @@ bool cfeof(cfile *fp) {
  *     A pointer to the string thus read.
  */
 
-char *cfgets(cfile *fp, char *str, int len) {
+char *cfgets(cfile *fp, char *str, size_t len) {
     if (!fp || !fp->vptr) {
         errno = EINVAL;
         return NULL;

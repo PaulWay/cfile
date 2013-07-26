@@ -113,7 +113,7 @@ static bool normal_eof(cfile *fp) {
  * \return A pointer to the string thus read.
  */
 
-static char *normal_gets(cfile *fp, char *str, int len) {
+static char *normal_gets(cfile *fp, char *str, size_t len) {
     cfile_normal *cfnp = (cfile_normal *)fp;
     return fgets(str, len, cfnp->fp);
 }

@@ -48,7 +48,7 @@ typedef struct cfile_vtable {
     /*! are we at the end of the file? */
     bool  (*eof)(cfile *fp);
     /*! get a string of given length */
-    char *(*gets)(cfile *fp, char *str, int len);
+    char *(*gets)(cfile *fp, char *str, size_t len);
     /*! print a line of variable args */
     int (*vprintf)(cfile *fp, const char *fmt, va_list ap)
         __attribute ((format (printf, 2, 0)));

@@ -36,7 +36,7 @@
 /* Predeclare function calls */
 off_t bzip2_size(cfile *fp);
 bool bzip2_eof(cfile *fp);
-char *bzip2_gets(cfile *fp, char *str, int len);
+char *bzip2_gets(cfile *fp, char *str, size_t len);
 ssize_t bzip2_read(cfile *fp, void *ptr, size_t size, size_t num);
 ssize_t bzip2_write(cfile *fp, const void *ptr, size_t size, size_t num);
 int bzip2_flush(cfile *fp);
@@ -406,7 +406,7 @@ static int bz_fgetc(cfile *fp) {
  * \return A pointer to the string thus read.
  */
  
-char *bzip2_gets(cfile *fp, char *str, int len) {
+char *bzip2_gets(cfile *fp, char *str, size_t len) {
     /*cfile_bzip2 *cfbp = (cfile_bzip2 *)fp;*/
     /* Implementation pulled from glibc's stdio.c */
     char *ptr = str;
