@@ -297,10 +297,10 @@ off_t cfsize(cfile *fp) {
  *     True (1) if the file has reached EOF, False (0) if not.
  */
 
-int cfeof(cfile *fp) {
+bool cfeof(cfile *fp) {
     if (!fp || !fp->vptr) {
         errno = EINVAL;
-        return -1;
+        return true;
     }
     return fp->vptr->eof(fp);
 }

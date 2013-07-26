@@ -46,7 +46,7 @@ typedef struct cfile_vtable {
     /*! return the (uncompressed) size of this file */
     off_t (*size)(cfile *fp);
     /*! are we at the end of the file? */
-    int   (*eof)(cfile *fp);
+    bool  (*eof)(cfile *fp);
     /*! get a string of given length */
     char *(*gets)(cfile *fp, char *str, int len);
     /*! print a line of variable args */

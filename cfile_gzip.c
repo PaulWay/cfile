@@ -31,7 +31,7 @@
 
 /* Predeclare function calls */
 off_t gzip_size(cfile *fp);
-int gzip_eof(cfile *fp);
+bool gzip_eof(cfile *fp);
 char *gzip_gets(cfile *fp, char *str, int len);
 ssize_t gzip_read(cfile *fp, void *ptr, size_t size, size_t num);
 ssize_t gzip_write(cfile *fp, const void *ptr, size_t size, size_t num);
@@ -110,7 +110,7 @@ off_t gzip_size(cfile *fp) {
  * \return True (1) if the file has reached EOF, False (0) if not.
  */
 
-int gzip_eof(cfile *fp) {
+bool gzip_eof(cfile *fp) {
     cfile_gzip *cfzp = (cfile_gzip *)fp;
     return gzeof(cfzp->gp);
 }

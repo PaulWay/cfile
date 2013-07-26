@@ -28,6 +28,7 @@
 #define __CFILE_H__
 
 #include <sys/types.h>
+#include <stdbool.h>
 
 /**
   * \typedef cfile
@@ -36,8 +37,8 @@
 typedef struct cfile cfile;
 
 /**
-  * The cfile_set_context function is used to set cfile's owned context.
-  * This allows parents to close all cfiles.
+  * The cfile_set_context function is used to set cfile's owned Talloc
+  * context.  This allows parents to close all cfiles.
   */
 void cfile_set_context(void *parent_context);
 
@@ -87,7 +88,7 @@ off_t cfsize(cfile *fp);
   *     true (non-zero) if position is at end-of-file marker,
   *     false (zero) if the file is not.
   */
-int cfeof(cfile *fp);
+bool cfeof(cfile *fp);
 
 /**
   * The cfgets function is used to read in at most one less than size

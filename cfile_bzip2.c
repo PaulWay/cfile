@@ -35,7 +35,7 @@
 
 /* Predeclare function calls */
 off_t bzip2_size(cfile *fp);
-int bzip2_eof(cfile *fp);
+bool bzip2_eof(cfile *fp);
 char *bzip2_gets(cfile *fp, char *str, int len);
 ssize_t bzip2_read(cfile *fp, void *ptr, size_t size, size_t num);
 ssize_t bzip2_write(cfile *fp, const void *ptr, size_t size, size_t num);
@@ -334,7 +334,7 @@ off_t bzip2_size(cfile *fp) {
  * \return True (1) if the file has reached EOF, False (0) if not.
  */
 
-int bzip2_eof(cfile *fp) {
+bool bzip2_eof(cfile *fp) {
     cfile_bzip2 *cfbp = (cfile_bzip2 *)fp;
     int errnum;
     BZ2_bzerror(cfbp->bp, &errnum);

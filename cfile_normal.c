@@ -93,7 +93,7 @@ static off_t normal_size(cfile *fp) {
  * \return True (1) if the file has reached EOF, False (0) if not.
  */
 
-static int normal_eof(cfile *fp) {
+static bool normal_eof(cfile *fp) {
     cfile_normal *cfnp = (cfile_normal *)fp;
     return feof(cfnp->fp);
 }
