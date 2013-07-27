@@ -422,12 +422,8 @@ bool cfgetline(cfile *fp, char **line, int *maxline) {
         *line = talloc_realloc(fp, *line, char, *maxline);
         /* Get more line */
         if (! cfgets(fp, *line + len, extend)) {
-            /* No more line - what do we return now? */
-            if (len == 0) {
-                return false;
-            } else {
-                break;
-            }
+            /* No more line - return a partial like fgets. */
+            break;
         }
         /* And set our line length */
         len = strlen(*line);
