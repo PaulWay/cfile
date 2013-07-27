@@ -388,35 +388,35 @@ bool cfgetline(cfile *fp, char **line) {
      * Otherwise, maxline is assumed to be the length of your string.  You'd
      * better have this right... :-)
      */
-    unsigned len;
-    unsigned extend = 0;
+    size_t off = 0, len;
     /* Since this uses only cfile calls and not the underlying implementation
        code, this is left as is. */
 
-    /* Allocate the string if it isn't already */
-    if (NULL == *line) {
-        *line = talloc_array(fp, char, 80);
-    }
-    len = talloc_get_size(*line);
+    for (;;) {
+	/* This returns 0 if *line is NULL */
+	len = talloc_get_size(*line);
 
-    /* Get the line thus far */
-    if (! cfgets(fp, *line, len)) {
-        return false;
-    }
-    len = strlen(*line);
-    extend = 0;
-    while (!cfeof(fp) && !isafullline(*line,len)) {
-        /* talloc_realloc automagically knows which context to use here :-) */
-        *line = talloc_realloc(fp, *line, char, len * 2);
+	/* Do we need more buffer? */
+	if (off == len) {
+	    if (len == 0) {
+		len = 80;
+	    } else {
+		len *= 2;
+	    }
+	    *line = talloc_realloc(fp, *line, char, len);
+	}
+
         /* Get more line */
-        if (! cfgets(fp, *line + len, len)) {
+        if (! cfgets(fp, *line + off, len - off)) {
             /* No more line - return a partial like fgets. */
             break;
         }
         /* And set our line length */
-        len += strlen(*line + len);
+        off += strlen(*line + off);
     }
-    return true;
+
+    /* True if we read anything. */
+    return off != 0;
 }
 
 /*! \brief Print a formatted string to the file, from another function
