@@ -49,14 +49,13 @@ void write_file (const char *name) {
     /* write_file - read the named file and write it to stdout
      */
     char *line = NULL;
-    int linelen = 0;
     cfile *in = cfile_open(name, "r");
     if (! in) {
         perror(name);
         exit(EXIT_FAILURE);
     }
     for (;;) {
-	if (!cfgetline(in, &line, &linelen)) {
+	if (!cfgetline(in, &line)) {
             break;
 	}
         cfprintf(out, "%s", line);

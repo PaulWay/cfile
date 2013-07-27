@@ -122,14 +122,11 @@ char *cfgets(cfile *fp, char *str, size_t len);
   *     The cfile handle of interest, returned by one of the #cfile_open or
   *     #cfile_dopen functions.
   * @param strp
-  *     A pointer to the buffer to receive the incoming data.
-  * @param maxline
-  *     The currently allocated size of the #str buffer, in bytes.
-  *     This will be enlarged as required to contin the whole line.
+  *     A pointer to the talloced buffer to receive the incoming data, or NULL.
   * @returns
   *     On success, returns true.
   */
-bool cfgetline(cfile *fp, char **line, int *maxline);
+bool cfgetline(cfile *fp, char **line);
 
 /**
   * The cfprintf function is used to
