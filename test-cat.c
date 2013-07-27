@@ -56,9 +56,9 @@ void write_file (const char *name) {
         exit(EXIT_FAILURE);
     }
     for (;;) {
-        line = cfgetline(in, line, &linelen);
-        if (! line)
+	if (!cfgetline(in, &line, &linelen)) {
             break;
+	}
         cfprintf(out, "%s", line);
     }
     if (cfclose(in))

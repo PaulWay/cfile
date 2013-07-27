@@ -367,19 +367,16 @@ char *cfgets(cfile *fp, char *str, size_t len) {
  * @param fp
  *     The file handle to read from.
  * @param line
- *     A character array to read the line into, and optionally
+ *     A pointer to character array to read the line into, and optionally
  *     extend.
  * @param maxline
  *     A pointer to an integer which will contain the length of
  *     the string currently allocated.
  * @return
- *     A pointer to the line thus read.  If talloc_realloc has had to
- *     move the pointer, then this will be different from the line pointer
- *     passed in.  Therefore, the correct usage of cfgetline is something
- *     like 'line = cfgetline(fp, line, &len);'
+ *     True if a line has been read into *line, false if not.
  */
 
-char *cfgetline(cfile *fp, char *line, int *maxline) {
+bool cfgetline(cfile *fp, char **line, int *maxline) {
     /* Get a line from the file into the buffer which has been preallocated
      * to maxline.  If the line from the file is too big to fit, we extend
      * the buffer and increase maxline.
@@ -408,39 +405,39 @@ char *cfgetline(cfile *fp, char *line, int *maxline) {
         *maxline = 80;
     }
     /* Allocate the string if it isn't already */
-    if (NULL == line) {
-        line = talloc_array(fp, char, *maxline);
+    if (NULL == *line) {
+        *line = talloc_array(fp, char, *maxline);
     }
     /* Get the line thus far */
-    if (! cfgets(fp, line, *maxline)) {
-        return NULL;
+    if (! cfgets(fp, *line, *maxline)) {
+        return false;
     }
-    len = strlen(line);
+    len = strlen(*line);
     extend = 0;
-    while (!cfeof(fp) && !isafullline(line,len)) {
+    while (!cfeof(fp) && !isafullline(*line,len)) {
         /* Add on how much we want to extend by */
         extend = len / 2;
         *maxline += extend;
         /* talloc_realloc automagically knows which context to use here :-) */
-        line = talloc_realloc(fp, line, char, *maxline);
+        *line = talloc_realloc(fp, *line, char, *maxline);
         /* Get more line */
-        if (! cfgets(fp, line + len, extend)) {
+        if (! cfgets(fp, *line + len, extend)) {
             /* No more line - what do we return now? */
             if (len == 0) {
-                return NULL;
+                return false;
             } else {
                 break;
             }
         }
         /* And set our line length */
-        len = strlen(line);
+        len = strlen(*line);
     }
     /* If we've been asked to shrink, do so */
     if (shrink) {
         *maxline = len + 1;
-        line = talloc_realloc(fp, line, char, *maxline);
+        *line = talloc_realloc(fp, *line, char, *maxline);
     }
-    return line;
+    return true;
 }
 
 /*! \brief Print a formatted string to the file, from another function
