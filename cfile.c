@@ -165,6 +165,15 @@ cfile *cfile_alloc(const cfile_vtable *vptr, const char *name,
     return fp;
 }
 
+/* Stolen from ccan/str/str.h */
+static inline bool strends(const char *str, const char *postfix)
+{
+	if (strlen(str) < strlen(postfix))
+		return false;
+
+	return !strcmp(str + strlen(str) - strlen(postfix), postfix);
+}
+
 /*! \brief Set cfile's parent context
  *
  *  Set cfile's parent context.  This allows a caller using talloc to 'own'
@@ -235,10 +244,9 @@ cfile *cfile_open(const char *name, const char *mode) {
 #endif
     /* Even though zlib allows reading of uncompressed files, let's
      * not complicate things too much at this stage :-) */
-    /* todo: make sure these match at end of file name */
-    if        (strstr(name,".gz" ) != NULL) {
+    if (strends(name, ".gz")) {
         return gzip_open(name, mode);
-    } else if (strstr(name,".bz2") != NULL) {
+    } else if (strends(name, ".bz2")) {
         return bzip2_open(name, mode);
     } else {
         return normal_open(name, mode);
