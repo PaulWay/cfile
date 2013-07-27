@@ -406,17 +406,15 @@ bool cfgetline(cfile *fp, char **line) {
     len = strlen(*line);
     extend = 0;
     while (!cfeof(fp) && !isafullline(*line,len)) {
-        /* Add on how much we want to extend by */
-        extend = len / 2;
         /* talloc_realloc automagically knows which context to use here :-) */
-        *line = talloc_realloc(fp, *line, char, len + extend);
+        *line = talloc_realloc(fp, *line, char, len * 2);
         /* Get more line */
-        if (! cfgets(fp, *line + len, extend)) {
+        if (! cfgets(fp, *line + len, len)) {
             /* No more line - return a partial like fgets. */
             break;
         }
         /* And set our line length */
-        len = strlen(*line);
+        len += strlen(*line + len);
     }
     return true;
 }
