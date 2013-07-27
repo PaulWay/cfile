@@ -151,10 +151,11 @@ void *pwlib_context = NULL;
 cfile *cfile_alloc(const cfile_vtable *vptr, const char *name,
     const char *mode)
 {
+    cfile *fp;
     if (!pwlib_context) {
         pwlib_context = talloc_init("CFile Talloc context");
     }
-    cfile *fp = talloc_size(pwlib_context, vptr->struct_size);
+    fp = talloc_size(pwlib_context, vptr->struct_size);
     if (fp) {
         fp->vptr = vptr;
         talloc_set_name(fp, "cfile '%s' (mode '%s')", name, mode);
@@ -385,6 +386,8 @@ char *cfgetline(cfile *fp, char *line, int *maxline) {
      * Otherwise, maxline is assumed to be the length of your string.  You'd
      * better have this right... :-)
      */
+    unsigned len;
+    unsigned extend = 0;
     /* Since this uses only cfile calls and not the underlying implementation
        code, this is left as is. */
     /* Check for the 'shrink' option */
@@ -404,8 +407,8 @@ char *cfgetline(cfile *fp, char *line, int *maxline) {
     if (! cfgets(fp, line, *maxline)) {
         return NULL;
     }
-    unsigned len = strlen(line);
-    unsigned extend = 0;
+    len = strlen(line);
+    extend = 0;
     while (!cfeof(fp) && !isafullline(line,len)) {
         /* Add on how much we want to extend by */
         extend = len / 2;
@@ -477,8 +480,9 @@ int cvfprintf(cfile *fp, const char *fmt, va_list ap) {
 int cfprintf(cfile *fp, const char *fmt, ...) {
     /* if (!fp) return 0; # Checked by cvfprintf anyway */
     va_list ap;
+    int rtn;
     va_start(ap, fmt);
-    int rtn = cvfprintf(fp, fmt, ap);
+    rtn = cvfprintf(fp, fmt, ap);
     va_end(ap);
     return rtn;
 }

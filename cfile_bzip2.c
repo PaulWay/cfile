@@ -83,17 +83,20 @@ static void bzip_attempt_store(cfile *fp, off_t size);
 
 static off_t bzip_calculate_size(cfile *fp) {
     cfile_bzip2 *cfbp = (cfile_bzip2 *)fp;
+    char *input;
+    FILE *fpipe;
+    long fsize;
     const int max_input_size = 20;
     char *cmd = talloc_asprintf(fp, "bzcat '%s' | wc -c", cfbp->inherited.filename);
     if (! cmd) {
         return 0;
     }
-    char *input = talloc_array(fp, char, max_input_size);
+    input = talloc_array(fp, char, max_input_size);
     if (! input) {
         talloc_free(cmd);
         return 0;
     }
-    FILE *fpipe = popen(cmd, "r");
+    fpipe = popen(cmd, "r");
     if (fpipe) {
         input = fgets(input, max_input_size, fpipe);
     } else {
@@ -103,7 +106,7 @@ static off_t bzip_calculate_size(cfile *fp) {
     }
     pclose(fpipe);
     talloc_free(cmd);
-    long fsize = atol(input);
+    fsize = atol(input);
     talloc_free(input);
     return fsize;
 }
@@ -152,6 +155,7 @@ struct size_xattr_struct {
 static int bzip_attribute_size(cfile *fp) {
     cfile_bzip2 *cfbp = (cfile_bzip2 *)fp;
     struct size_xattr_struct xattr;
+    struct stat sp;
     ssize_t check = getxattr(
         cfbp->inherited.filename,
         "user.cfile_uncompressed_size",
@@ -195,7 +199,6 @@ static int bzip_attribute_size(cfile *fp) {
     );
 #endif
     /* Now check it against the file's modification time */
-    struct stat sp;
     if (stat(cfbp->inherited.filename, &sp) == 0) {
 #ifdef DEBUG_XATTR
         fprintf(stderr, "stat on file good, mtime = %ld\n"
@@ -267,13 +270,14 @@ cfile *bzip2_open(const char *name, /*!< The name of the file to open.
                    written to, as appropriate (both being used uncompressed.) */
                   const char *mode) /*!< "r" to specify reading, "w" for writing. */
 {
+    cfile_bzip2 *cfbp;
     BZFILE *own_file = BZ2_bzopen(name, mode);
     if (!own_file) {
         /* Keep any errno set by bzopen - let it handle any invalid modes,
            etc. */
         return NULL;
     }
-    cfile_bzip2 *cfbp = (cfile_bzip2 *)cfile_alloc(&bzip2_cfile_table, name, mode);
+    cfbp = (cfile_bzip2 *)cfile_alloc(&bzip2_cfile_table, name, mode);
     if (!cfbp) {
         errno = EINVAL;
         return NULL;

@@ -227,6 +227,7 @@ cfile *normal_open(const char *name, const char *mode)
 {
     /* If we have a '-' as a file name, dup stdin or stdout */
     FILE *own_file;
+    cfile_normal *cfnp;
     if (strcmp(name, "-") == 0) {
         if (strstr(mode, "r") != 0) {
             own_file = stdin;
@@ -248,7 +249,7 @@ cfile *normal_open(const char *name, const char *mode)
             return NULL;
         }
     }
-    cfile_normal *cfnp = (cfile_normal *)cfile_alloc(&normal_cfile_table,
+    cfnp = (cfile_normal *)cfile_alloc(&normal_cfile_table,
         name, mode);
     if (!cfnp) {
         errno = EINVAL;
