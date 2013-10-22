@@ -48,7 +48,7 @@ int bzip2_close(cfile *fp);
  */
 typedef struct cfile_bzip2 {
     cfile inherited; /*< our inherited function table */
-    BZFILE *bp;      /*< the actual zlib file pointer */
+    BZFILE *bp;      /*< the actual bzlib file pointer */
     char *buffer;    /*< a read buffer for doing gets */
     int buflen;      /*< the length of the buffer we've read */
     int bufpos;      /*< our position in the buffer */
@@ -82,18 +82,22 @@ static void bzip_attempt_store(cfile *fp, off_t size);
  */
 
 static off_t bzip_calculate_size(cfile *fp) {
+    char *input;
+    FILE *fpipe;
+    long fsize;
+
     cfile_bzip2 *cfbp = (cfile_bzip2 *)fp;
     const int max_input_size = 20;
     char *cmd = talloc_asprintf(fp, "bzcat '%s' | wc -c", cfbp->inherited.filename);
     if (! cmd) {
         return 0;
     }
-    char *input = talloc_array(fp, char, max_input_size);
+    input = talloc_array(fp, char, max_input_size);
     if (! input) {
         talloc_free(cmd);
         return 0;
     }
-    FILE *fpipe = popen(cmd, "r");
+    fpipe = popen(cmd, "r");
     if (fpipe) {
         input = fgets(input, max_input_size, fpipe);
     } else {
@@ -103,7 +107,7 @@ static off_t bzip_calculate_size(cfile *fp) {
     }
     pclose(fpipe);
     talloc_free(cmd);
-    long fsize = atol(input);
+    fsize = atol(input);
     talloc_free(input);
     return fsize;
 }
@@ -150,6 +154,8 @@ struct size_xattr_struct {
  */
 
 static int bzip_attribute_size(cfile *fp) {
+    struct stat sp;
+
     cfile_bzip2 *cfbp = (cfile_bzip2 *)fp;
     struct size_xattr_struct xattr;
     ssize_t check = getxattr(
@@ -195,7 +201,6 @@ static int bzip_attribute_size(cfile *fp) {
     );
 #endif
     /* Now check it against the file's modification time */
-    struct stat sp;
     if (stat(cfbp->inherited.filename, &sp) == 0) {
 #ifdef DEBUG_XATTR
         fprintf(stderr, "stat on file good, mtime = %ld\n"
@@ -267,15 +272,18 @@ cfile *bzip2_open(const char *name, /*!< The name of the file to open.
                    written to, as appropriate (both being used uncompressed.) */
                   const char *mode) /*!< "r" to specify reading, "w" for writing. */
 {
+	cfile_bzip2 *cfbp;
+	
     BZFILE *own_file = BZ2_bzopen(name, mode);
     if (!own_file) {
         /* Keep any errno set by bzopen - let it handle any invalid modes,
            etc. */
         return NULL;
     }
-    cfile_bzip2 *cfbp = (cfile_bzip2 *)cfile_alloc(&bzip2_cfile_table, name, mode);
+    cfbp = (cfile_bzip2 *)cfile_alloc(&bzip2_cfile_table, name, mode);
     if (!cfbp) {
         errno = EINVAL;
+        BZ2_bzclose(own_file);
         return NULL;
     }
     cfbp->bp = own_file;
