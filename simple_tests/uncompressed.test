@@ -1,0 +1,8 @@
+#!/bin/sh
+
+if [[ "do$1" == "doclean" ]]; then
+        # does not create any temporary files
+        exit
+fi
+
+../test-cat ./uncompressed.test | diff - uncompressed.test

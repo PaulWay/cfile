@@ -1,0 +1,12 @@
+#!/bin/sh
+
+if [[ "do$1" == "doclean" ]]; then
+        rm gzip.test.gz
+        exit
+fi
+
+if [[ ! -f gzip.test.gz || gzip.test.gz -ot gzip.test ]]; then
+	gzip -c gzip.test > gzip.test.gz
+fi
+
+../test-cat gzip.test.gz | diff - gzip.test

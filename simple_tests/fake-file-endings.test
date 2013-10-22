@@ -1,0 +1,17 @@
+#!/bin/sh
+
+if [[ "do$1" == "doclean" ]]; then
+        rm fake-file-endings.gz.txt fake-file-endings.bz2.dat
+        exit
+fi
+
+if [[ ! -f fake-file-endings.gz.txt ]]; then
+	echo "This should be left as normal." > fake-file-endings.gz.txt
+fi
+if [[ ! -f fake-file-endings.bz2.dat ]]; then
+	echo "This should be normal text." > fake-file-endings.bz2.dat
+fi
+
+../test-cat fake-file-endings.gz.txt | diff - fake-file-endings.gz.txt
+../test-cat fake-file-endings.bz2.dat | diff - fake-file-endings.bz2.dat
+

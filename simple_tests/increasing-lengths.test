@@ -1,0 +1,13 @@
+#!/bin/sh
+
+if [[ "do$1" == "doclean" ]]; then
+        rm increasing-lengths.txt
+        exit
+fi
+
+if [[ ! -f increasing-lengths.txt || increasing-lengths.txt -ot increasing-lengths.test ]]; then
+	perl -e 'foreach my $len (1..90) { print( substr("1234567890"x($len/10 + 1),0,$len), "\n"); }' > increasing-lengths.txt
+fi
+
+../test-cat increasing-lengths.txt | diff - increasing-lengths.txt
+

@@ -1,0 +1,13 @@
+#!/bin/sh
+
+if [[ "do$1" == "doclean" ]]; then
+        rm no-last-line-end.txt
+        exit
+fi
+
+if [[ ! -f no-last-line-end.txt ]]; then
+	echo -en "This line has a line ending\nBut this one doesn't" > no-last-line-end.txt
+fi
+
+../test-cat no-last-line-end.txt | diff - no-last-line-end.txt
+

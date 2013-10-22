@@ -1,0 +1,12 @@
+#!/bin/sh
+
+if [[ "do$1" == "doclean" ]]; then
+	rm bzip2-enc.test.bz2
+	exit
+fi
+
+if [[ ! -f bzip2-enc.test.bz2 || bzip2-enc.test.bz2 -ot bzip2-enc.test ]]; then
+	../test-cat bzip2-enc.test -o bzip2-enc.test.bz2
+fi
+
+bzcat bzip2-enc.test.bz2 | diff - bzip2-enc.test
