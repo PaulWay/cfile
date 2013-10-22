@@ -44,7 +44,7 @@ int gzip_close(cfile *fp);
  */
 typedef struct cfile_gzip {
     cfile inherited; /*< our inherited function table */
-    gzFile *gp;             /*< the actual zlib file pointer */
+    gzFile gp;             /*< the actual zlib file pointer */
 } cfile_gzip;
 
 static const cfile_vtable gzip_cfile_table;
@@ -63,15 +63,18 @@ cfile *gzip_open(const char *name, /*!< The name of the file to open.
                writing stdout as gzip compressed streams. */
               const char *mode) /*!< "r" to specify reading, "w" for writing. */
 {
-    gzFile *own_file = gzopen(name, mode);
+    cfile_gzip *cfzp;
+    
+    gzFile own_file = gzopen(name, mode);
     if (!own_file) {
         /* Keep any errno set by gzopen - let it handle any invalid modes,
            etc. */
         return NULL;
     }
-    cfile_gzip *cfzp = (cfile_gzip *)cfile_alloc(&gzip_cfile_table, name, mode);
+    cfzp = (cfile_gzip *)cfile_alloc(&gzip_cfile_table, name, mode);
     if (!cfzp) {
         errno = EINVAL;
+        gzclose(own_file);
         return NULL;
     }
     cfzp->gp = own_file;
@@ -91,12 +94,13 @@ cfile *gzip_open(const char *name, /*!< The name of the file to open.
  */
 
 off_t gzip_size(cfile *fp) {
+    int size; /* Make sure this is a 32-bit int! */
+
     FILE *rawfp = fopen(fp->filename,"rb"); /* open the compressed file directly */
     if (!rawfp) {
         return 0;
     }
     fseek(rawfp,-4,2);
-    int size; /* Make sure this is a 32-bit int! */
     fread(&size,4,1,rawfp);
     fclose(rawfp);
     return (off_t)size;
