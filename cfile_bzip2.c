@@ -267,9 +267,7 @@ static void bzip_attempt_store(cfile *fp, off_t size) {
  *
  * \return A successfully created file handle, or NULL on failure.
  */
-cfile *bzip2_open(const char *name, /*!< The name of the file to open.  
-                   If this is "-", then stdin is read from or stdout is
-                   written to, as appropriate (both being used uncompressed.) */
+cfile *bzip2_open(const char *name, /*!< The name of the file to open. */
                   const char *mode) /*!< "r" to specify reading, "w" for writing. */
 {
 	cfile_bzip2 *cfbp;
