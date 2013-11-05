@@ -17,6 +17,8 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ * 
+ * vim: ts=4 et ai:
  */
 
 #include <string.h>
@@ -35,23 +37,25 @@ static void *context = NULL;
 int encode(const char *filename) {
 	lzma_stream xz_stream = LZMA_STREAM_INIT;
 	lzma_ret rtn = 0;
-	char *line = NULL;
-	uint8_t *buffer = NULL;
+	char *in_buf = NULL;
+	char *in_pos = NULL; /* Position in buffer at which we're reading */
+	size_t in_remain = BUFFER_SIZE;
+	uint8_t *out_buf = NULL;
 	size_t linelen = 0;
 	ssize_t filelen = 0;
 	FILE *infh;
 	FILE *outfh;
 	char *outname = NULL;
 
-    line = talloc_array(context, char, 160);
-    buffer = talloc_array(context, uint8_t, BUFFER_SIZE);
+    in_buf  = talloc_array(context, char, BUFFER_SIZE);
+    out_buf = talloc_array(context, uint8_t, BUFFER_SIZE);
     
 	/* Initialise encoder.  Put input and output buffer information in
 	 * structure and then call lzma_easy_encoder to start an encoder
 	 * using this structure. */
 	printf("Using easy encoder... ");
-	xz_stream.next_in = (uint8_t *)line;
-	xz_stream.next_out = buffer;
+	xz_stream.next_in = (uint8_t *)in_buf;
+	xz_stream.next_out = out_buf;
 	xz_stream.avail_out = BUFFER_SIZE;
 	rtn = lzma_easy_encoder(&xz_stream, 9, LZMA_CHECK_CRC64);
 	printf("Returned %d\n", rtn);
@@ -66,21 +70,27 @@ int encode(const char *filename) {
 	}
 
 	/* Read lines from the file, compressing each one as we go. */
+	in_pos = in_buf;
 	while (! feof(infh)) {
-		fgets(line, 160, infh);
-		linelen = strlen(line);
+		fgets(in_pos, in_remain, infh);
+		/* TODO: encode buffer and restart when buffer fills */
+		linelen = strlen(in_pos);
 		rtn = lzma_code(&xz_stream, LZMA_RUN);
-		printf("Coded %zu bytes, got %d, compressed to %lu bytes\n", 
-		 linelen, rtn, xz_stream.total_out
-		);
 		xz_stream.avail_in = linelen;
 		
+		in_pos += linelen; in_remain -= linelen;
+
+		printf("Coded %zu bytes, got %d, compressed to %lu bytes, %zu remain in buffer\n", 
+		 linelen, rtn, xz_stream.total_out, in_remain
+		);
+
 		filelen += linelen;
 	}
 	fclose(infh);
 	
 	/* Tell LZMA to finalise its compression */
 	for (;;) {
+		xz_stream.avail_in = 0;
 		rtn = lzma_code(&xz_stream, LZMA_FINISH);
 		printf("Finalising compression: got %d, %lu bytes ready in buffer\n",
 		 rtn, xz_stream.total_out
@@ -99,12 +109,12 @@ int encode(const char *filename) {
 	}
 	
 	/* Write the buffer to it */
-	fwrite(buffer, 1, xz_stream.total_out, outfh);
+	fwrite(out_buf, sizeof(uint8_t), xz_stream.total_out, outfh);
 	fclose(outfh);
 	
 	/* Free up our allocated memory */
-	talloc_free(line);
-	talloc_free(buffer);
+	talloc_free(in_buf);
+	talloc_free(out_buf);
 	talloc_free(outname);
 	
 	/* Finish up */
