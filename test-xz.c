@@ -75,13 +75,12 @@ int encode(const char *filename) {
 		fgets(in_pos, in_remain, infh);
 		/* TODO: encode buffer and restart when buffer fills */
 		linelen = strlen(in_pos);
-		rtn = lzma_code(&xz_stream, LZMA_RUN);
-		xz_stream.avail_in = linelen;
+/*		rtn = lzma_code(&xz_stream, LZMA_RUN); */
 		
 		in_pos += linelen; in_remain -= linelen;
 
-		printf("Coded %zu bytes, got %d, compressed to %lu bytes, %zu remain in buffer\n", 
-		 linelen, rtn, xz_stream.total_out, in_remain
+		printf("Coded %zu bytes, %zu remain in buffer\n", 
+		 linelen, in_remain
 		);
 
 		filelen += linelen;
@@ -90,7 +89,7 @@ int encode(const char *filename) {
 	
 	/* Tell LZMA to finalise its compression */
 	for (;;) {
-		xz_stream.avail_in = 0;
+		xz_stream.avail_in = filelen;
 		rtn = lzma_code(&xz_stream, LZMA_FINISH);
 		printf("Finalising compression: got %d, %lu bytes ready in buffer\n",
 		 rtn, xz_stream.total_out
