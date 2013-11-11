@@ -1,5 +1,5 @@
 /*
- * cfile.c
+ * cfile_private.h
  * This file is part of The PaulWay Libraries
  *
  * Copyright (C) 2006 Paul Wayper <paulway@mabula.net>
@@ -73,11 +73,45 @@ typedef struct cfile {
     char *filename;     /*< the name of this file, since we always have one */
 } cfile;
 
+/*! \brief allocate a chunk of memory for a cfile
+ * 
+ */
 cfile *cfile_alloc(
     const cfile_vtable *vptr,
     const char *name,
     const char *mode
 );
 
+/*! \brief Internal buffer handling structure
+ * 
+ * Both bzip2 and xz have no 'fgets' or 'fgetc' equivalents.  For reads, we
+ * need to have our own internal buffer that we can use the decompression
+ * routines to put data into, and then read uncompressed data from until
+ * we need more, and so on.  This allows to handle this independently of
+ * the compression type, so as to not duplicate code.
+ */
+
+typedef struct cfile_buffer_struct {
+	/*! a read buffer for doing gets */
+    char *buffer;
+    /*! the length of the buffer we've read */
+    size_t buflen;
+    /*! our position in the buffer */
+    size_t bufpos;
+    /*! a function to read more into this buffer */
+    size_t (*read_into_buffer)(void *private, size_t size, const char* buffer);
+} cfile_buffer;
+
+/*! brief Initialise the buffer structure
+ * 
+ * This routine does the base work of allocating the buffer and filling
+ * out its fields.
+ */
+
+cfile_buffer *cfile_buffer_alloc(
+	const void *context,
+	const size_t (*read_into_buffer)(void *private, size_t size, const char* buffer)
+);
+
 #endif /* CFILE_PRIVATE_H */
-/* vim: set ts=8 sw=4 et : */
+/* vim: set ts=4 sw=4 et : */
