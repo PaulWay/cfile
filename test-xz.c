@@ -32,14 +32,27 @@
 
 #define BUFFER_SIZE 4096
 
+static char *lzma_ret_code[12] = {
+	"LZMA_OK",
+	"LZMA_STREAM_END",
+	"LZMA_NO_CHECK",
+	"LZMA_UNSUPPORTED_CHECK",
+	"LZMA_GET_CHECK",
+	"LZMA_MEM_ERROR",
+	"LZMA_MEMLIMIT_ERROR",
+	"LZMA_FORMAT_ERROR",
+	"LZMA_OPTIONS_ERROR",
+	"LZMA_DATA_ERROR",
+	"LZMA_BUFF_ERROR",
+	"LZMA_PROG_ERROR"
+};
+
 static void *context = NULL;
 
 int encode(const char *filename) {
 	lzma_stream xz_stream = LZMA_STREAM_INIT;
 	lzma_ret rtn = 0;
 	char *in_buf = NULL;
-	char *in_pos = NULL; /* Position in buffer at which we're reading */
-	size_t in_remain = BUFFER_SIZE;
 	uint8_t *out_buf = NULL;
 	size_t linelen = 0;
 	ssize_t filelen = 0;
@@ -54,11 +67,10 @@ int encode(const char *filename) {
 	 * structure and then call lzma_easy_encoder to start an encoder
 	 * using this structure. */
 	printf("Using easy encoder... ");
-	xz_stream.next_in = (uint8_t *)in_buf;
 	xz_stream.next_out = out_buf;
 	xz_stream.avail_out = BUFFER_SIZE;
 	rtn = lzma_easy_encoder(&xz_stream, 9, LZMA_CHECK_CRC64);
-	printf("Returned %d\n", rtn);
+	printf("Returned %s\n", lzma_ret_code[rtn]);
 
 	/* open the input file */
 	infh = fopen(filename, "r");
@@ -69,36 +81,9 @@ int encode(const char *filename) {
 		return errno;
 	}
 
-	/* Read lines from the file, compressing each one as we go. */
-	in_pos = in_buf;
-	while (! feof(infh)) {
-		fgets(in_pos, in_remain, infh);
-		/* TODO: encode buffer and restart when buffer fills */
-		linelen = strlen(in_pos);
-/*		rtn = lzma_code(&xz_stream, LZMA_RUN); */
-		
-		in_pos += linelen; in_remain -= linelen;
-
-		printf("Coded %zu bytes, %zu remain in buffer\n", 
-		 linelen, in_remain
-		);
-
-		filelen += linelen;
-	}
-	fclose(infh);
-	
-	/* Tell LZMA to finalise its compression */
-	for (;;) {
-		xz_stream.avail_in = filelen;
-		rtn = lzma_code(&xz_stream, LZMA_FINISH);
-		printf("Finalising compression: got %d, %lu bytes ready in buffer\n",
-		 rtn, xz_stream.total_out
-		);
-		if (rtn == LZMA_STREAM_END) break;
-	}
-	
 	/* Open the output file */
 	outname = talloc_asprintf(context, "%s.xz", filename);
+	printf("Writing %s\n", outname);
 	outfh = fopen(outname, "w");
 	if (!outfh) {
 		fprintf(stderr, "Failed to open %s: %s(%d)\n",
@@ -107,8 +92,62 @@ int encode(const char *filename) {
 		return errno;
 	}
 	
-	/* Write the buffer to it */
-	fwrite(out_buf, sizeof(uint8_t), xz_stream.total_out, outfh);
+	/* Read lines from the file, compressing each one as we go. */
+	while (! feof(infh)) {
+		fgets(in_buf, BUFFER_SIZE, infh);
+		xz_stream.next_in = (uint8_t *)in_buf;
+		linelen = strlen(in_buf);
+		xz_stream.avail_in = linelen;
+		filelen += linelen;
+
+		rtn = lzma_code(&xz_stream, LZMA_RUN);
+		/*printf("Read %zu bytes, coding returned %s, output has %lu bytes\n", 
+		 linelen, lzma_ret_code[rtn], BUFFER_SIZE - xz_stream.avail_out
+		);*/
+
+		/* We have to buffer the write process here too... */
+		if (xz_stream.avail_out == 0) {
+			fwrite(out_buf, sizeof(uint8_t), BUFFER_SIZE, outfh);
+			printf("At %lu bytes of input, wrote %d bytes to disk\n",
+			 filelen, BUFFER_SIZE
+			);
+			
+			/* reset the output buffer */
+			xz_stream.next_out = out_buf;
+			xz_stream.avail_out = BUFFER_SIZE;
+		}
+			
+	}
+	fclose(infh);
+	printf("Closed input, read %lu bytes\n", filelen);
+	
+	/* Tell LZMA to finalise its compression */
+	for (;;) {
+		xz_stream.next_in = (uint8_t *)in_buf;
+		xz_stream.avail_in = 0;
+		rtn = lzma_code(&xz_stream, LZMA_FINISH);
+		if (xz_stream.avail_out == 0) {
+			printf("Buffer full when finalising, got %s, writing %d bytes\n",
+			 lzma_ret_code[rtn], BUFFER_SIZE
+			);
+			/* Write the buffer to it */
+			fwrite(out_buf, sizeof(uint8_t), BUFFER_SIZE, outfh);
+			xz_stream.next_out = out_buf;
+			xz_stream.avail_out = BUFFER_SIZE;
+		}
+		
+		if (rtn == LZMA_STREAM_END) {
+			fwrite(out_buf, sizeof(uint8_t), BUFFER_SIZE - xz_stream.avail_out, outfh);
+			printf("Final write of %lu bytes\n", BUFFER_SIZE - xz_stream.avail_out);
+			break;
+		}
+		
+		if (rtn > 0) {
+			printf("Compression fail with %s\n", lzma_ret_code[rtn]);
+			break;
+		}
+	}
+	
 	fclose(outfh);
 	
 	/* Free up our allocated memory */
@@ -117,7 +156,6 @@ int encode(const char *filename) {
 	talloc_free(outname);
 	
 	/* Finish up */
-	printf("Read %lu bytes!\n", filelen);
 	printf("Talloc report when finishing encoding, after freeing memory:\n");
 	talloc_report_full(context, stderr);
 	return 0;
@@ -128,9 +166,16 @@ int main(int argc, char *argv[]) {
     talloc_enable_leak_report();
     context = talloc_init("main test-xz context");
     cfile_set_context(context);
+    int n;
 
 	/* input file is our own code */
-	encode("test-xz.c");
+	if (argc > 1) {
+		for (n=1; n<argc; n++) {
+			encode(argv[n]);
+		}
+	} else {
+		encode("test-xz.c");
+	}
 	
 	talloc_report_full(context, stderr);
     talloc_free(context);
