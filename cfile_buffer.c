@@ -19,7 +19,10 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "cfile.h"
+#include "stdbool.h"
+#include "stddef.h"
+#include "talloc.h"
+
 #include "cfile_buffer.h"
 
 /*! brief Initialise the buffer structure
@@ -30,7 +33,8 @@
 
 cfile_buffer *cfile_buffer_alloc(
 	const void *context,
-	size_t (*read_into_buffer)(void *private, size_t size, const char* buffer)
+    size_t size,
+	size_t (*read_into_buffer)(void *private, const char* buffer, size_t size)
 ) {
     cfile_buffer *buf = talloc(context, cfile_buffer);
     if (!buf) {
@@ -47,6 +51,34 @@ cfile_buffer *cfile_buffer_alloc(
     buf->bufpos = 0;
     buf->read_into_buffer = read_into_buffer;
     return buf;
+}
+
+/*! \brief Read one character from the buffer
+ * 
+ * This requests more data from the buffer if necessary, then returns the
+ * current character.
+ * 
+ * This can be used as the basis of fgets, but hopefully a more efficient
+ * implementation of the latter can be achieved.
+ */
+char buf_fgetc(cfile_buffer *bp, void *private) {
+    /* Find buffer structure */
+    if (bp->buflen == bp->bufpos) {
+        bp->bufpos = 0;
+        bp->buflen = bp->read_into_buffer(private, bp->buffer, bp->bufsize);
+        if (bp->buflen <= 0) return EOF;
+    }
+    return bp->buffer[bp->bufpos++]; /* Ah, the cleverness of postincrement */
+}
+
+/*! \brief Is the buffer empty?
+ * 
+ * Returns true if last read of uncompressed data has zero bytes - in other 
+ * words, if we cannot return another character from the buffer.
+ */
+
+bool buf_empty(cfile_buffer *bp) {
+    return bp->buflen == 0;
 }
 
 /* vim: set ts=4 sw=4 et : */

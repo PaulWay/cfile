@@ -31,6 +31,7 @@
 #include <attr/xattr.h>
 
 #include "cfile_private.h"
+#include "cfile_buffer.h"
 #include "cfile_bzip2.h"
 
 /* Predeclare function calls */
@@ -49,9 +50,7 @@ int bzip2_close(cfile *fp);
 typedef struct cfile_bzip2 {
     cfile inherited; /*< our inherited function table */
     BZFILE *bp;      /*< the actual bzlib file pointer */
-    char *buffer;    /*< a read buffer for doing gets */
-    int buflen;      /*< the length of the buffer we've read */
-    int bufpos;      /*< our position in the buffer */
+    cfile_buffer *buffer; /*< our buffer structure */
 } cfile_bzip2;
 
 static const cfile_vtable bzip2_cfile_table;
@@ -258,6 +257,17 @@ static void bzip_attempt_store(cfile *fp, off_t size) {
 #endif
 }
 
+/*! \brief Read callback function to read more data for buffer
+ * 
+ * This provides uncompressed data to the generic buffer implementation.
+ */
+
+size_t bz_read_into_buffer(void *private, const char* buffer, size_t size);
+size_t bz_read_into_buffer(void *private, const char* buffer, size_t size) {
+    cfile_bzip2 *cfbp = (cfile_bzip2 *)private;
+    return BZ2_bzread(cfbp->bp, (char *)buffer, size);
+}
+
 /*! \brief Open a file for reading or writing
  *
  *  Open the given file using the given mode.  Opens the file and
@@ -280,14 +290,18 @@ cfile *bzip2_open(const char *name, /*!< The name of the file to open. */
     }
     cfbp = (cfile_bzip2 *)cfile_alloc(&bzip2_cfile_table, name, mode);
     if (!cfbp) {
-        errno = EINVAL;
+        errno = ENOMEM;
         BZ2_bzclose(own_file);
         return NULL;
     }
     cfbp->bp = own_file;
-    cfbp->buffer = NULL;
-    cfbp->buflen = 0;
-    cfbp->bufpos = 0;
+    cfbp->buffer = cfile_buffer_alloc(cfbp, BZIP2_BUFFER_SIZE, bz_read_into_buffer);
+    if (!cfbp->buffer) {
+        errno = ENOMEM;
+        BZ2_bzclose(own_file);
+        talloc_free(cfbp);
+        return NULL;
+    }
     return (cfile *)cfbp;
 }
 
@@ -346,14 +360,8 @@ bool bzip2_eof(cfile *fp) {
     BZ2_bzerror(cfbp->bp, &errnum);
     /* this actually returns a pointer to the error message,
      * but we're not using it in this context... */
-    if (errnum == 0) {
-        /* bzerror doesn't appear to be reporting BZ_STREAM_END
-         * when it's run out of characters */
-        /* But if we've allocated a buffer, and its length and
-         * position are now zero, then we're at the end of it AFAICS */
-        if (cfbp->buffer != NULL && cfbp->buflen == 0 && cfbp->bufpos == 0) {
-            return 1;
-        }
+    if (errnum == 0 && buf_empty(cfbp->buffer)) {
+        return 1;
     }
     return (errnum == BZ_OK
          || errnum == BZ_RUN_OK
@@ -379,21 +387,7 @@ bool bzip2_eof(cfile *fp) {
  */
 static int bz_fgetc(cfile *fp) {
     cfile_bzip2 *cfbp = (cfile_bzip2 *)fp;
-    /* Should we move this check and creation to the initialisation,
-     * so it doesn't slow down the performance of fgetc? */
-    if (! cfbp->buffer) {
-        cfbp->buffer = talloc_array(cfbp, char, BZIP2_BUFFER_SIZE);
-        if (! cfbp->buffer) {
-            errno = EINVAL;
-            return EOF;
-        }
-    }
-    if (cfbp->buflen == cfbp->bufpos) {
-        cfbp->bufpos = 0;
-        cfbp->buflen = BZ2_bzread(cfbp->bp, cfbp->buffer, BZIP2_BUFFER_SIZE);
-        if (cfbp->buflen <= 0) return EOF;
-    }
-    return cfbp->buffer[cfbp->bufpos++]; /* Ah, the cleverness of postincrement */
+    return buf_fgetc(cfbp->buffer, (void *)cfbp);
 }
 
 /*! \brief Get a string from the file, up to a maximum length or newline.

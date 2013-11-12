@@ -43,16 +43,19 @@ cfile_normal.o: cfile.h cfile_normal.h cfile_private.h
 
 cfile_gzip.o: cfile.h cfile_gzip.h cfile_private.h
 
-cfile_bzip2.o: cfile.h cfile_bzip2.h cfile_private.h
+cfile_bzip2.o: cfile.h cfile_bzip2.h cfile_private.h cfile_buffer.h
 
-cfile.o: cfile.h cfile_private.h cfile_normal.h cfile_gzip.h cfile_bzip2.h
+cfile.o: cfile.h cfile_private.h cfile_normal.h cfile_gzip.h cfile_bzip2.h cfile_buffer.h
+
+cfile_buffer.o: cfile.h cfile_buffer.h
 
 libfiles = \
         cfile.o \
         cfile_bzip2.o \
         cfile_gzip.o \
         cfile_normal.o \
-        cfile_null.o
+        cfile_null.o \
+	cfile_buffer.o
 
 #        cfile_ebadf.o \
 

@@ -19,10 +19,10 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "stddef.h"
+
 #ifndef CFILE_BUFFER_H
 #define CFILE_BUFFER_H
-
-#include "cfile.h"
 
 /*! \brief Internal buffer handling structure
  * 
@@ -55,19 +55,41 @@ typedef struct cfile_buffer_struct {
     /*! our position in the buffer */
     size_t bufpos;
     /*! a function to read more into this buffer */
-    size_t (*read_into_buffer)(void *private, size_t size, const char* buffer);
+    size_t (*read_into_buffer)(void *private, const char* buffer, size_t size);
 } cfile_buffer;
 
-/*! brief Initialise the buffer structure
+/*! \brief Initialise the buffer structure
  * 
  * This routine does the base work of allocating the buffer and filling
  * out its fields.
  */
 
 cfile_buffer *cfile_buffer_alloc(
-	const void *context,
-	size_t (*read_into_buffer)(void *private, size_t size, const char* buffer)
+    /*! The talloc context to allocate against - usually your own file pointer */
+    const void *context,
+    /*! The size of the buffer to allocate, in bytes */
+    size_t size,
+    /*! The read function you want to use */
+    size_t (*read_into_buffer)(void *private, const char* buffer, size_t size)
 );
+
+/*! \brief Read one character from the buffer
+ * 
+ * This requests more data from the buffer if necessary, then returns the
+ * current character.
+ * 
+ * This can be used as the basis of fgets, but hopefully a more efficient
+ * implementation of the latter can be achieved.
+ */
+char buf_fgetc(cfile_buffer *bp, void *private);
+
+/*! \brief Is the buffer empty?
+ * 
+ * Returns true if last read of uncompressed data has zero bytes - in other 
+ * words, if we cannot return another character from the buffer.
+ */
+
+bool buf_empty(cfile_buffer *bp);
 
 #endif /* CFILE_BUFFER_H */
 /* vim: set ts=4 sw=4 et : */
