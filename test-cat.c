@@ -48,17 +48,17 @@ void write_file (const char *name);
 void write_file (const char *name) {
     /* write_file - read the named file and write it to stdout
      */
+    char *line = NULL;
+
     cfile *in = cfile_open(name, "r");
     if (! in) {
         perror(name);
         exit(EXIT_FAILURE);
     }
-    char *line = NULL;
-    int linelen = 0;
     for (;;) {
-        line = cfgetline(in, line, &linelen);
-        if (! line)
+        if (! cfgetline(in, &line)) {
             break;
+		}
         cfprintf(out, "%s", line);
     }
     if (cfclose(in))
@@ -75,16 +75,13 @@ static void usage(void) {
 }
 
 
-int main (int argc, char *argv[])
-{
+int main (int argc, char *argv[]) {
     int report_flag = 0;
     talloc_enable_leak_report();
     context = talloc_init("main test-cat context");
     cfile_set_context(context);
-    for (;;)
-    {
-        static const struct option options[] =
-        {
+    for (;;) {
+        static const struct option options[] = {
             { "output", 1, 0, 'o' },
             { "talloc-leak-report", 0, 0, 'r' },
             { 0, 0, 0, 0 }
@@ -92,14 +89,12 @@ int main (int argc, char *argv[])
         int c = getopt_long(argc, argv, "o:r", options, 0);
         if (c == -1)
             break;
-        switch (c)
-        {
+        switch (c) {
         case 'o':
             if (out)
                 usage();
             out = cfile_open(optarg, "w");
-            if (!out)
-            {
+            if (!out) {
                 perror(optarg);
                 exit(EXIT_FAILURE);
             }
@@ -113,44 +108,36 @@ int main (int argc, char *argv[])
             usage();
         }
     }
-    if (!out)
-    {
+    if (!out) {
         out = cfile_dopen(1, "w");
-        if (!out)
-        {
+        if (!out) {
             perror("cfdopen");
             talloc_free(context);
             exit(EXIT_FAILURE);
         }
     }
 
-    if (optind == argc)
-    {
+    if (optind == argc) {
         write_file("-");
-    }
-    else
-    {
-        for (;;)
-        {
+    } else {
+        for (;;) {
             write_file(argv[optind++]);
             if (optind >= argc)
                 break;
         }
     }
 
-    if (cfclose(out))
-    {
+    if (cfclose(out)) {
         perror("cfclose");
         exit(EXIT_FAILURE);
     }
     talloc_free(context);
 
-    if (report_flag)
-    {
+    if (report_flag) {
         /*
          * List what the talloc tree looks like, from the top level.
          */
-        talloc_report_full(NULL, stderr);
+        talloc_report_full(context, stderr);
     }
     return EXIT_SUCCESS;
 }

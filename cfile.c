@@ -128,6 +128,8 @@
 #include "cfile_bzip2.h"
 #include "cfile_null.h"
 
+
+
 /*! \brief The library's Talloc context
  */
 
@@ -151,10 +153,11 @@ void *pwlib_context = NULL;
 cfile *cfile_alloc(const cfile_vtable *vptr, const char *name,
     const char *mode)
 {
+    cfile *fp;
     if (!pwlib_context) {
         pwlib_context = talloc_init("CFile Talloc context");
     }
-    cfile *fp = talloc_size(pwlib_context, vptr->struct_size);
+    fp = talloc_size(pwlib_context, vptr->struct_size);
     if (fp) {
         fp->vptr = vptr;
         talloc_set_name(fp, "cfile '%s' (mode '%s')", name, mode);
@@ -162,6 +165,15 @@ cfile *cfile_alloc(const cfile_vtable *vptr, const char *name,
     	talloc_set_destructor(fp, vptr->close);
     }
     return fp;
+}
+
+/* Stolen from ccan/str/str.h */
+static inline bool strends(const char *str, const char *postfix)
+{
+       if (strlen(str) < strlen(postfix))
+               return false;
+
+       return !strcmp(str + strlen(str) - strlen(postfix), postfix);
 }
 
 /*! \brief Set cfile's parent context
@@ -234,10 +246,9 @@ cfile *cfile_open(const char *name, const char *mode) {
 #endif
     /* Even though zlib allows reading of uncompressed files, let's
      * not complicate things too much at this stage :-) */
-    /* todo: make sure these match at end of file name */
-    if        (strstr(name,".gz" ) != NULL) {
+    if (strends(name, ".gz")) {
         return gzip_open(name, mode);
-    } else if (strstr(name,".bz2") != NULL) {
+    } else if (strends(name, ".bz2")) {
         return bzip2_open(name, mode);
     } else {
         return normal_open(name, mode);
@@ -310,10 +321,9 @@ bool cfeof(cfile *fp) {
  * @param fp
  *     The file handle to read from.
  * @param str
- *     A character array to read the line into, and optionally
- *     extend.
+ *     A character array to read the line into.
  * @param len
- *     The size of the #str in bytes.
+ *     The maximum size of the array in bytes.
  * @return
  *     A pointer to the string thus read.
  */
@@ -336,100 +346,92 @@ char *cfgets(cfile *fp, char *str, size_t len) {
  *  line.  You have to know the length of the longest line, in advance, in
  *  order to read each line from the file in one call.  cfgetline solves
  *  this problem by progressively extending the string you pass until the
- *  entire line has been read.  To do this it uses talloc_realloc, and a
- *  variable which holds the length of the line allocated so far.  If you
+ *  entire line has been read.  To do this it uses talloc_realloc, and it
+ *  determines the array's original size using talloc_get_size.  If you
  *  haven't initialised the line beforehand, cfgetline will do so
  *  (allocating it against the file pointer's context).  If you have, then
  *  the magic of talloc_realloc allocates the new space against the
  *  context that you originally allocated your buffer against.  So to
  *  speak.
  *
- *  In normal usage, this 'buffer' will expand but never contract.  It
- *  expands to half again its current size, so if you have a very long
- *  line lurking in your input somewhere, then it's going to set the
- *  buffer size for all the lines after it.  If you're concerned by this
- *  wasting a lot of memory, then set the length negative (while keeping
- *  its absolute size).  This will signal to cfgetline to shrink the
- *  line buffer after this line has been read.  For example, if your line
- *  buffer is currently 1024 and you want it to shrink, then set it to
- *  -1024 before calling cfgetline.  In reality, this is almost never
- *  going to be a problem.
+ *  In normal usage, this 'buffer' will expand but never contract.  If
+ *  you need to, you can shrink the buffer yourself once you get it.
  *
  * @param fp
  *     The file handle to read from.
  * @param line
- *     A character array to read the line into, and optionally
- *     extend.
- * @param maxline
- *     A pointer to an integer which will contain the length of
- *     the string currently allocated.
+ *     A pointer to a character array to read the line into, and 
+ *     extend if required.
  * @return
- *     A pointer to the line thus read.  If talloc_realloc has had to
- *     move the pointer, then this will be different from the line pointer
- *     passed in.  Therefore, the correct usage of cfgetline is something
- *     like 'line = cfgetline(fp, line, &len);'
+ *     If a line was read, return true.  If the file ended, return false.
  */
 
-char *cfgetline(cfile *fp, char *line, int *maxline) {
-    /* Get a line from the file into the buffer which has been preallocated
-     * to maxline.  If the line from the file is too big to fit, we extend
-     * the buffer and increase maxline.
+#define CFGETLINE_DEBUG 0
+
+bool cfgetline(cfile *fp, char **line) {
+    /* Get a line from the file into the buffer.
      * If you pass a NULL pointer, it will allocate memory for you initially
-     * (although against the pwlib's context rather than your own).
-     * If maxline is zero, we'll reset it to something reasonable.  (These
-     * two options allow you to start with a blank slate and let cfgetline
-     * do all the work.
-     * If you pass a negative maxline, it'll assume that the absolute value
-     * is the size you want but will shrink the allocated memory down to the
-     * minimum required to store the line afterward.
-     * Otherwise, maxline is assumed to be the length of your string.  You'd
-     * better have this right... :-)
+     * (although against the file's context rather than your own).
      */
-    /* Since this uses only cfile calls and not the underlying implementation
-       code, this is left as is. */
-    /* Check for the 'shrink' option */
-    char shrink = (*maxline < 0);
-    if (shrink) {
-        *maxline *= -1;
-    }
-    /* Check for a zero maxline and reset it */
-    if (*maxline == 0) {
-        *maxline = 80;
-    }
-    /* Allocate the string if it isn't already */
-    if (NULL == line) {
-        line = talloc_array(fp, char, *maxline);
-    }
-    /* Get the line thus far */
-    if (! cfgets(fp, line, *maxline)) {
-        return NULL;
-    }
-    unsigned len = strlen(line);
-    unsigned extend = 0;
-    while (!cfeof(fp) && !isafullline(line,len)) {
-        /* Add on how much we want to extend by */
-        extend = len / 2;
-        *maxline += extend;
-        /* talloc_realloc automagically knows which context to use here :-) */
-        line = talloc_realloc(fp, line, char, *maxline);
-        /* Get more line */
-        if (! cfgets(fp, line + len, extend)) {
-            /* No more line - what do we return now? */
+    size_t off = 0, len;
+#if CFGETLINE_DEBUG
+    printf("cfgetline(fp=%p, line=%p)\n", fp, line);
+#endif
+
+    for (;;) {
+        /* This returns 0 if *line is NULL */
+        len = talloc_get_size(*line);
+#if CFGETLINE_DEBUG
+        printf("   len=%zu, off=%zu\n", len, off);
+#endif
+
+        /* Do we need more buffer? */
+        if (off + 1 >= len) {
+            /* if we receive exactly len-1 characters, there isn't space to
+             * store the newline or the null terminator.  So expand if we
+             * hit that point, rather than the exact offset. */
             if (len == 0) {
-                return NULL;
+                len = 80;
             } else {
-                break;
+                len *= 2;
             }
+#if CFGETLINE_DEBUG
+            printf("   realloc line to len = %zu\n", len);
+#endif
+            *line = talloc_realloc(fp, *line, char, len);
         }
+
+        /* Get more line */
+        if (! cfgets(fp, *line + off, len - off)) {
+            /* No more line - return a partial like fgets. */
+#if CFGETLINE_DEBUG
+            printf("   cfgets(fp, line + off=%zu, len=%zu - off=%zu) returned false\n",
+             off, len, off);
+#endif
+            break;
+        }
+#if CFGETLINE_DEBUG
+        printf("   cfgets(fp, line + off=%zu, len=%zu - off=%zu) returned true\n",
+         off, len, off);
+#endif
         /* And set our line length */
-        len = strlen(line);
+        off += strlen(*line + off);
+#if CFGETLINE_DEBUG
+        printf("   *line='%s', offset now %zu\n", *line, off);
+#endif
+        if (isafullline(*line, off)) {
+#if CFGETLINE_DEBUG
+            printf("   is a full line, breaking\n");
+#endif
+            break;
+        }
     }
-    /* If we've been asked to shrink, do so */
-    if (shrink) {
-        *maxline = len + 1;
-        line = talloc_realloc(fp, line, char, *maxline);
-    }
-    return line;
+
+#if CFGETLINE_DEBUG
+    printf("cfile returns %zu != 0\n", off);
+#endif
+    /* True if we read anything. */
+    return off != 0;
 }
 
 /*! \brief Print a formatted string to the file, from another function
@@ -477,8 +479,10 @@ int cvfprintf(cfile *fp, const char *fmt, va_list ap) {
 int cfprintf(cfile *fp, const char *fmt, ...) {
     /* if (!fp) return 0; # Checked by cvfprintf anyway */
     va_list ap;
+    int rtn;
+    
     va_start(ap, fmt);
-    int rtn = cvfprintf(fp, fmt, ap);
+    rtn = cvfprintf(fp, fmt, ap);
     va_end(ap);
     return rtn;
 }
