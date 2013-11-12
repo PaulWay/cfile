@@ -380,8 +380,8 @@ bool bzip2_eof(cfile *fp) {
  *  we need to provide fgets (for the cfgetline function, if nothing else).
  *  The stdio.c implementation relies on fgetc to get one character at a
  *  time, but this would be inefficient if done as continued one-byte
- *  reads from bzlib.  So we use the buffer pointer to store chunks of
- *  the file to read from.
+ *  reads from bzlib.  We use our cfile buffer handler function to
+ *  handle the block reads and supply us with a character at a time.
  * \param fp The file to read from.
  * \return the character read, or EOF (-1).
  */
