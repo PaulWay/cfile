@@ -31,11 +31,25 @@
  * routines to put data into, and then read uncompressed data from until
  * we need more, and so on.  This allows to handle this independently of
  * the compression type, so as to not duplicate code.
+ * 
+ * The buffer has a total allocation, but sometimes (e.g. at end of file) the
+ * read may not fill the buffer.  Therefore we need to know the total size
+ * of the buffer, how much data is actually in it, and our place within that
+ * valid data.
+ * 
+ * The read_into_buffer function is called when the buffer needs more data.
+ * It is given a private pointer to the underlying implementations' own data
+ * structure (which it has from the CFile pointer), the maximum number of
+ * characters to read, and the buffer into which the data shall be put.  It
+ * should then return the actual number of characters read.  This should
+ * roughly map to what fgets, or your local alternative, gives you.
  */
 
 typedef struct cfile_buffer_struct {
-	/*! a read buffer for doing gets */
+    /*! a read buffer for doing gets */
     char *buffer;
+    /*! the memory allocated to this buffer */
+    size_t bufsize;
     /*! the length of the buffer we've read */
     size_t buflen;
     /*! our position in the buffer */
