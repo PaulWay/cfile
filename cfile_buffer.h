@@ -83,6 +83,17 @@ cfile_buffer *cfile_buffer_alloc(
  */
 char buf_fgetc(cfile_buffer *bp, void *private);
 
+/*! \brief Read a string from the buffer until newline or EOF.
+ * 
+ * The normal fgets method as implemented in glibc uses fgetc to get
+ * characters one at a time from the file, with no knowledge of any
+ * underlying buffer.  Since we've got one here, we try to implement a
+ * generic fgets replacement by going through the buffer looking for the
+ * end of line.
+ */
+
+char *buf_fgets(cfile_buffer *bp, char *str, size_t len, void *private);
+
 /*! \brief Is the buffer empty?
  * 
  * Returns true if last read of uncompressed data has zero bytes - in other 

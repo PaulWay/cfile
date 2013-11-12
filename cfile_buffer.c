@@ -83,7 +83,7 @@ char buf_fgetc(cfile_buffer *bp, void *private) {
  * generic fgets replacement by going through the buffer looking for the
  * end of line.
  */
-char *buf_gets(cfile_buffer *bp, char *str, size_t len, void *private) {
+char *buf_fgets(cfile_buffer *bp, char *str, size_t len, void *private) {
     /* Implementation modified from glibc's stdio.c */
     char *ptr = str;
     int ch;
@@ -91,7 +91,7 @@ char *buf_gets(cfile_buffer *bp, char *str, size_t len, void *private) {
     if (len <= 0) return NULL;
 
     while (--len) {
-        if ((ch = bz_fgetc(fp)) == EOF) {
+        if ((ch = buf_fgetc(bp, private)) == EOF) {
             if (ptr == str) return NULL;
             break;
         }
