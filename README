@@ -1,0 +1,66 @@
+CFile
+=====
+
+CFile is a library to allow you to read and write files independent of
+what their compression method is.  It determines the correct set of
+routines based on the name of the file, and it can use libMagic to
+work the type out if that's available.
+
+How to use it
+-------------
+
+I've tried to make CFile a drop-in replacement for the standard stdio
+file handling routines.  For example:
+
+cfile *fp = cfile_open("hello.txt", "w");
+cfprint(fp, "Hello, %s\n", "world");
+cfclose(fp);
+
+How to compile it
+-----------------
+
+CFile has fairly minimal build requirements:
+
+$ make clean
+rm -f *.o *.a test-cat
+$ make
+cc -Wall -Wshadow -Werror-implicit-function-declaration -Wmissing-prototypes -W
+strict-prototypes -Wpointer-arith -Wcast-align -Wwrite-strings -Wmissing-format
+-attribute -Wformat=2 -Wno-format-y2k -Wdeclaration-after-statement -Wextra -We
+rror -I.  -c -o cfile.o cfile.c
+cc -Wall -Wshadow -Werror-implicit-function-declaration -Wmissing-prototypes -W
+strict-prototypes -Wpointer-arith -Wcast-align -Wwrite-strings -Wmissing-format
+-attribute -Wformat=2 -Wno-format-y2k -Wdeclaration-after-statement -Wextra -We
+rror -I.  -c -o cfile_bzip2.o cfile_bzip2.c
+cc -Wall -Wshadow -Werror-implicit-function-declaration -Wmissing-prototypes -W
+strict-prototypes -Wpointer-arith -Wcast-align -Wwrite-strings -Wmissing-format
+-attribute -Wformat=2 -Wno-format-y2k -Wdeclaration-after-statement -Wextra -We
+rror -I.  -c -o cfile_gzip.o cfile_gzip.c
+cc -Wall -Wshadow -Werror-implicit-function-declaration -Wmissing-prototypes -W
+strict-prototypes -Wpointer-arith -Wcast-align -Wwrite-strings -Wmissing-format
+-attribute -Wformat=2 -Wno-format-y2k -Wdeclaration-after-statement -Wextra -We
+rror -I.  -c -o cfile_normal.o cfile_normal.c
+cc -Wall -Wshadow -Werror-implicit-function-declaration -Wmissing-prototypes -W
+strict-prototypes -Wpointer-arith -Wcast-align -Wwrite-strings -Wmissing-format
+-attribute -Wformat=2 -Wno-format-y2k -Wdeclaration-after-statement -Wextra -We
+rror -I.  -c -o cfile_null.o cfile_null.c
+test -f libcfile.a && rm libcfile.a || true
+ar cq libcfile.a cfile.o cfile_bzip2.o cfile_gzip.o cfile_normal.o cfile_null.o
+cc -Wall -Wshadow -Werror-implicit-function-declaration -Wmissing-prototypes -W
+strict-prototypes -Wpointer-arith -Wcast-align -Wwrite-strings -Wmissing-format
+-attribute -Wformat=2 -Wno-format-y2k -Wdeclaration-after-statement -Wextra -We
+rror -I.  -c -o test-cat.o test-cat.c
+gcc -g test-cat.o -o test-cat -L. -lcfile -lz -lbz2 -ltalloc
+$
+
+
+
+Required libraries:
+===================
+
+To compile CFile, you'll need:
+
+libtalloc-devel
+libattr-devel
+libmagic-devel
+
