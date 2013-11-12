@@ -30,7 +30,7 @@ CFLAGS =  \
         -Wmissing-format-attribute \
         -Wformat=2 \
         -Wno-format-y2k \
-        -Wno-declaration-after-statement \
+        -Wdeclaration-after-statement \
         -Wextra \
         -Werror
 CPPFLAGS = \
