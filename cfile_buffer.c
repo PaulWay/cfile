@@ -60,6 +60,10 @@ cfile_buffer *cfile_buffer_alloc(
  * 
  * This can be used as the basis of fgets, but hopefully a more efficient
  * implementation of the latter can be achieved.
+ * 
+ * \param bp the cfile buffer structure pointer
+ * \param private a pointer to the implementation's private data.  This is
+ * then passed to the supplied read_into_buffer, which can then cast it back.
  */
 char buf_fgetc(cfile_buffer *bp, void *private) {
     /* Find buffer structure */
@@ -69,6 +73,35 @@ char buf_fgetc(cfile_buffer *bp, void *private) {
         if (bp->buflen <= 0) return EOF;
     }
     return bp->buffer[bp->bufpos++]; /* Ah, the cleverness of postincrement */
+}
+
+/*! \brief Read a string from the buffer until newline or EOF.
+ * 
+ * The normal fgets method as implemented in glibc uses fgetc to get
+ * characters one at a time from the file, with no knowledge of any
+ * underlying buffer.  Since we've got one here, we try to implement a
+ * generic fgets replacement by going through the buffer looking for the
+ * end of line.
+ */
+char *buf_gets(cfile_buffer *bp, char *str, size_t len, void *private) {
+    /* Implementation modified from glibc's stdio.c */
+    char *ptr = str;
+    int ch;
+
+    if (len <= 0) return NULL;
+
+    while (--len) {
+        if ((ch = bz_fgetc(fp)) == EOF) {
+            if (ptr == str) return NULL;
+            break;
+        }
+
+        if ((*ptr++ = ch) == '\n') break;
+    }
+
+    *ptr = '\0';
+    return str;
+
 }
 
 /*! \brief Is the buffer empty?
