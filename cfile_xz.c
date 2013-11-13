@@ -119,39 +119,24 @@ off_t xz_size(cfile *fp) {
 
 /*! \brief Returns true if we've reached the end of the file being read.
  *
- *  bzlib doesn't seem to correctly return BZ_STREAM_END
- *  when the stream has actually reached its end, so we have to check
- *  another way - whether the last buffer read was zero bytes long.
+ *  There are two ways of knowing whether we're at the end of the xz file:
+ *  One is by checking the EOF state of the underlying file handle,
+ *  the other is by finding out that the last buffer read got zero bytes.
  * \param fp The file handle to check.
  * \return True (1) if the file has reached EOF, False (0) if not.
  */
 
 bool xz_eof(cfile *fp) {
     cfile_xz *cfxp = (cfile_xz *)fp;
-}
-
-/*! \brief An implementation of fgetc for xz files.
- *
- *  liblzma does not implement any of the 'low level' string functions.
- *  In order to support treating an xz file as a 'real' file, we
- *  we need to provide fgets (for the cfgetline function, if nothing else).
- *  The stdio.c implementation relies on fgetc to get one character at a
- *  time, but trying to consume one byte at a time from an xz file is
- *  difficult.  We use our cfile buffer handler function to
- *  handle the block reads and supply us with a character at a time.
- * \param fp The file to read from.
- * \return the character read, or EOF (-1).
- */
-static int xz_fgetc(cfile *fp) {
-    cfile_xz *cfxp = (cfile_xz *)fp;
-    return buf_fgetc(cfxp->buffer, (void *)cfxp);
+    if (feof(cfxp->fp)) return 1;
+    if (buf_empty(cfxp->buffer)) return 1;
+    return 0;
 }
 
 /*! \brief Get a string from the file, up to a maximum length or newline.
  *
- *  bzlib doesn't provide an equivalent to gets, so we have to copy the
- *  implementation from stdio.c and use it here, referring to our own
- *  bz_fgetc function.
+ *  liblzma doesn't provide an equivalent to gets, so we use our generic 
+ *  buffer implementation.
  * \param fp The file handle to read from.
  * \param str An array of characters to read the file contents into.
  * \param len The maximum length, plus one, of the string to read.  In
@@ -164,24 +149,8 @@ static int xz_fgetc(cfile *fp) {
  */
  
 char *xz_gets(cfile *fp, char *str, size_t len) {
-    /*cfile_xz *cfxp = (cfile_xz *)fp;*/
-    /* Implementation pulled from glibc's stdio.c */
-    char *ptr = str;
-    int ch;
-
-    if (len <= 0) return NULL;
-
-    while (--len) {
-        if ((ch = bz_fgetc(fp)) == EOF) {
-            if (ptr == str) return NULL;
-            break;
-        }
-
-        if ((*ptr++ = ch) == '\n') break;
-    }
-
-    *ptr = '\0';
-    return str;
+    cfile_xz *cfxp = (cfile_xz *)fp;
+    return buf_fgets(cfxp->buffer, str, len, (void *)cfxp);
 }
 
 /*! \brief Print a formatted string to the file, from another function
@@ -201,10 +170,9 @@ int xz_vprintf(cfile *fp, const char *fmt, va_list ap)
   __attribute ((format (printf, 2, 0)));
 
 int xz_vprintf(cfile *fp, const char *fmt, va_list ap) {
-    cfile_xz *cfxp = (cfile_xz *)fp;
     int rtn;
     char *buf = talloc_vasprintf(fp, fmt, ap);
-    rtn = BZ2_bzwrite(cfxp->bp, buf, strlen(buf));
+    rtn = xz_write(fp, buf, strlen(buf));
     talloc_free(buf);
     return rtn;
 }
@@ -242,7 +210,6 @@ ssize_t xz_read(cfile *fp, void *ptr, size_t size, size_t num) {
 ssize_t xz_write(cfile *fp, const void *ptr, size_t size, size_t num) {
     cfile_xz *cfxp = (cfile_xz *)fp;
     ssize_t rtn = BZ2_bzwrite(cfxp->bp, (void *)ptr, size * num);
-    /* talloc_free(my_ptr); */
     return rtn;
 }
 
@@ -252,10 +219,6 @@ ssize_t xz_write(cfile *fp, const void *ptr, size_t size, size_t num) {
  *  yet written to disk.  If the file is being read, it has no effect.
  * \param fp The file handle to flush.
  * \return the success of the file flush operation.
- * \note for gzip files, under certain compression methods, flushing
- *  may result in lower compression performance.  We use Z_SYNC_FLUSH
- *  to write to the nearest byte boundary without unduly impacting
- *  compression.
  */
  
 int xz_flush(cfile *fp) {
@@ -273,23 +236,7 @@ int xz_flush(cfile *fp) {
  
 int xz_close(cfile *fp) {
     cfile_xz *cfxp = (cfile_xz *)fp;
-    /* Use the ReadClose or WriteClose routines to get the error
-     * status.  If we were writing, this gives us the uncompressed
-     * file size, which can be stored in the extended attribute. */
-    /* How do we know whether we were reading or writing?  If the
-     * buffer has been allocated, we've been read from (in theory).
-     */
-    int bzerror;
-    if (cfxp->buffer) {
-        BZ2_bzReadClose(&bzerror, cfxp->bp);
-    } else {
-        /* Writing: get the uncompressed byte count and store it. */
-        unsigned uncompressed_size;
-        /* 0 = don't bother to complete the file if there was an error */
-        BZ2_bzWriteClose(&bzerror, cfxp->bp, 0, &uncompressed_size, NULL);
-        bzip_attempt_store(fp, uncompressed_size);
-    }
-    return bzerror;
+
 }
 
 /*! \brief The function dispatch table for xz files */
