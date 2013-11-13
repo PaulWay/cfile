@@ -66,7 +66,6 @@ cfile_buffer *cfile_buffer_alloc(
  * then passed to the supplied read_into_buffer, which can then cast it back.
  */
 char buf_fgetc(cfile_buffer *bp, void *private) {
-    /* Find buffer structure */
     if (bp->buflen == bp->bufpos) {
         bp->bufpos = 0;
         bp->buflen = bp->read_into_buffer(private, bp->buffer, bp->bufsize);
@@ -83,25 +82,30 @@ char buf_fgetc(cfile_buffer *bp, void *private) {
  * generic fgets replacement by going through the buffer looking for the
  * end of line.
  */
+
 char *buf_fgets(cfile_buffer *bp, char *str, size_t len, void *private) {
     /* Implementation modified from glibc's stdio.c */
     char *ptr = str;
-    int ch;
 
     if (len <= 0) return NULL;
 
     while (--len) {
-        if ((ch = buf_fgetc(bp, private)) == EOF) {
-            if (ptr == str) return NULL;
-            break;
+        /* If we need more string, then get it */
+        if (bp->buflen == bp->bufpos) {
+            bp->bufpos = 0;
+            bp->buflen = bp->read_into_buffer(private, bp->buffer, bp->bufsize);
+            if (bp->buflen <= 0) {
+                if (ptr == str) return NULL;
+                break;
+            }
         }
 
-        if ((*ptr++ = ch) == '\n') break;
+        /* Put next character into target, check for end of line */
+        if ((*ptr++ = bp->buffer[bp->bufpos++]) == '\n') break;
     }
 
     *ptr = '\0';
     return str;
-
 }
 
 /*! \brief Is the buffer empty?
