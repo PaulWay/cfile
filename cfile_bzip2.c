@@ -49,6 +49,7 @@ int bzip2_close(cfile *fp);
  */
 typedef struct cfile_bzip2 {
     cfile inherited; /*< our inherited function table */
+    bool writing;    /*< are we writing to this file, or reading? */
     BZFILE *bp;      /*< the actual bzlib file pointer */
     cfile_buffer *buffer; /*< our buffer structure */
 } cfile_bzip2;
@@ -295,6 +296,7 @@ cfile *bzip2_open(const char *name, /*!< The name of the file to open. */
         return NULL;
     }
     cfbp->bp = own_file;
+    cfbp->writing = (mode[0] == 'w');
     cfbp->buffer = cfile_buffer_alloc(cfbp, BZIP2_BUFFER_SIZE, bz_read_into_buffer);
     if (!cfbp->buffer) {
         errno = ENOMEM;
@@ -481,18 +483,15 @@ int bzip2_close(cfile *fp) {
     /* Use the ReadClose or WriteClose routines to get the error
      * status.  If we were writing, this gives us the uncompressed
      * file size, which can be stored in the extended attribute. */
-    /* How do we know whether we were reading or writing?  If the
-     * buffer has been allocated, we've been read from (in theory).
-     */
     int bzerror;
-    if (cfbp->buffer) {
-        BZ2_bzReadClose(&bzerror, cfbp->bp);
-    } else {
+    if (cfbp->writing) {
         /* Writing: get the uncompressed byte count and store it. */
         unsigned uncompressed_size;
         /* 0 = don't bother to complete the file if there was an error */
         BZ2_bzWriteClose(&bzerror, cfbp->bp, 0, &uncompressed_size, NULL);
         bzip_attempt_store(fp, uncompressed_size);
+    } else {
+        BZ2_bzReadClose(&bzerror, cfbp->bp);
     }
     return bzerror;
 }
