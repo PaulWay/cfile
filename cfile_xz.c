@@ -80,6 +80,31 @@ size_t xz_read_into_buffer(void *private, const char* buffer, size_t size) {
 cfile *xz_open(const char *name, /*!< The name of the file to open */
                const char *mode) /*!< "r" to specify reading, "w" for writing. */
 {
+    cfile_xz *cfxp;
+    FILE *own_file;
+    
+    if (!(own_file == fopen(name, mode))) {
+        return NULL;
+    }
+    
+    cfxp = (cfile_xz *)cfile_alloc(&xz_cfile_table, name, mode);
+    if (!cfxp) {
+        errno = ENOMEM;
+        fclose(own_file);
+        return NULL;
+    }
+
+    cfxp->lzma_stream = LZMA_STREAM_INIT;
+    
+    cfxp->buffer = cfile_buffer_alloc(cfxp, XZ_BUFFER_SIZE, xz_read_into_buffer);
+    if (!cfxp->buffer) {
+        errno = ENOMEM;
+        fclose(own_file);
+        talloc_free(cfxp);
+        return NULL;
+    }
+    
+    return (cfile *)cfxp;
 }
 
 /*! \brief Returns the _uncompressed_ file size
