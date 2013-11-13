@@ -373,28 +373,11 @@ bool bzip2_eof(cfile *fp) {
      * is a logical EOF in my book. */
 }
 
-/*! \brief An implementation of fgetc for bzip2 files.
- *
- *  bzlib does not implement any of the 'low level' string functions.
- *  In order to support treating a bzip2 file as a 'real' file, we
- *  we need to provide fgets (for the cfgetline function, if nothing else).
- *  The stdio.c implementation relies on fgetc to get one character at a
- *  time, but this would be inefficient if done as continued one-byte
- *  reads from bzlib.  We use our cfile buffer handler function to
- *  handle the block reads and supply us with a character at a time.
- * \param fp The file to read from.
- * \return the character read, or EOF (-1).
- */
-static int bz_fgetc(cfile *fp) {
-    cfile_bzip2 *cfbp = (cfile_bzip2 *)fp;
-    return buf_fgetc(cfbp->buffer, (void *)cfbp);
-}
-
 /*! \brief Get a string from the file, up to a maximum length or newline.
  *
- *  bzlib doesn't provide an equivalent to gets, so we have to copy the
- *  implementation from stdio.c and use it here, referring to our own
- *  bz_fgetc function.
+ *  bzlib doesn't provide an equivalent to gets, so we use our generic buffer
+ *  implementation.
+ *
  * \param fp The file handle to read from.
  * \param str An array of characters to read the file contents into.
  * \param len The maximum length, plus one, of the string to read.  In
@@ -402,29 +385,13 @@ static int bz_fgetc(cfile *fp) {
  *  characters from the file.  The character after the last character
  *  read is always set to \\0 to terminate the string.  The newline
  *  character is kept on the line if there was room to read it.
- * \see bz_fgetc
+ * \see buf_fgets, buf_fgetc
  * \return A pointer to the string thus read.
  */
  
 char *bzip2_gets(cfile *fp, char *str, size_t len) {
-    /*cfile_bzip2 *cfbp = (cfile_bzip2 *)fp;*/
-    /* Implementation pulled from glibc's stdio.c */
-    char *ptr = str;
-    int ch;
-
-    if (len <= 0) return NULL;
-
-    while (--len) {
-        if ((ch = bz_fgetc(fp)) == EOF) {
-            if (ptr == str) return NULL;
-            break;
-        }
-
-        if ((*ptr++ = ch) == '\n') break;
-    }
-
-    *ptr = '\0';
-    return str;
+    cfile_bzip2 *cfbp = (cfile_bzip2 *)fp;
+    return buf_fgets(cfbp->buffer, str, len, (void *)cfbp);
 }
 
 /*! \brief Print a formatted string to the file, from another function
