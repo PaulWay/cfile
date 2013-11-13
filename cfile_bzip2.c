@@ -452,7 +452,6 @@ ssize_t bzip2_read(cfile *fp, void *ptr, size_t size, size_t num) {
 ssize_t bzip2_write(cfile *fp, const void *ptr, size_t size, size_t num) {
     cfile_bzip2 *cfbp = (cfile_bzip2 *)fp;
     ssize_t rtn = BZ2_bzwrite(cfbp->bp, (void *)ptr, size * num);
-    /* talloc_free(my_ptr); */
     return rtn;
 }
 
@@ -462,10 +461,6 @@ ssize_t bzip2_write(cfile *fp, const void *ptr, size_t size, size_t num) {
  *  yet written to disk.  If the file is being read, it has no effect.
  * \param fp The file handle to flush.
  * \return the success of the file flush operation.
- * \note for gzip files, under certain compression methods, flushing
- *  may result in lower compression performance.  We use Z_SYNC_FLUSH
- *  to write to the nearest byte boundary without unduly impacting
- *  compression.
  */
  
 int bzip2_flush(cfile *fp) {
