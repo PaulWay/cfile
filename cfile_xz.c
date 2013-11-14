@@ -45,6 +45,7 @@ typedef struct cfile_xz {
     cfile inherited; /*< our inherited function table */
     FILE *xf;        /*< the actual xz file - just a standard handle */
     lzma_stream stream; /*< the LZMA stream information */
+    bool decoding;    /*< are we decoding this file, or encoding? */
     cfile_buffer *buffer; /*< our buffer structure */
 } cfile_xz;
 
@@ -82,11 +83,13 @@ cfile *xz_open(const char *name, /*!< The name of the file to open */
 {
     cfile_xz *cfxp;
     FILE *own_file;
+	lzma_ret rtn = 0;
     
     if (!(own_file == fopen(name, mode))) {
         return NULL;
     }
     
+    cfxp->decoding = strends(name, '.xz');
     cfxp = (cfile_xz *)cfile_alloc(&xz_cfile_table, name, mode);
     if (!cfxp) {
         errno = ENOMEM;
@@ -95,6 +98,19 @@ cfile *xz_open(const char *name, /*!< The name of the file to open */
     }
 
     cfxp->lzma_stream = LZMA_STREAM_INIT;
+    if (cfxp->decoding) {
+        /* Allow concatenated files to be read - changes read semantics */
+        rtn = lzma_auto_decoder(cfxp->xz_stream, UINT64_MAX, LZMA_CONCATENATED);
+    } else {
+        rtn = lzma_easy_encoder(cfxp->xz_stream, 9, LZMA_CHECK_CRC64);
+    }
+    
+    if (rtn != LZMA_OK) {
+        errno = EINVAL;
+        fclose(own_file);
+        talloc_free(cfxp);
+        return NULL;
+    }
     
     cfxp->buffer = cfile_buffer_alloc(cfxp, XZ_BUFFER_SIZE, xz_read_into_buffer);
     if (!cfxp->buffer) {
@@ -115,6 +131,9 @@ cfile *xz_open(const char *name, /*!< The name of the file to open */
 
 off_t xz_size(cfile *fp) {
     cfile_xz *cfxp = (cfile_xz *)fp;
+    
+    /* See source of xz for this - basically read the footer off the end of
+     * the file and then try to find further footers earlier in the file */
 }
 
 /*! \brief Returns true if we've reached the end of the file being read.
