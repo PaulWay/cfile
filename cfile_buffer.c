@@ -22,8 +22,16 @@
 #include "stdbool.h"
 #include "stddef.h"
 #include "talloc.h"
+#include "string.h"
 
+#include "cfile.h"
 #include "cfile_buffer.h"
+
+/* Since we do this a lot: */
+#define READ_BUFFER \
+    bp->bufpos = 0; \
+    bp->buflen = bp->read_into_buffer(private, bp->buffer, bp->bufsize);
+
 
 /*! brief Initialise the buffer structure
  * 
@@ -34,7 +42,7 @@
 cfile_buffer *cfile_buffer_alloc(
 	const void *context,
     size_t size,
-	size_t (*read_into_buffer)(void *private, const char* buffer, size_t size)
+	size_t (*read_into_buffer)(cfile *private, const char* buffer, size_t size)
 ) {
     cfile_buffer *buf = talloc(context, cfile_buffer);
     if (!buf) {
@@ -65,10 +73,9 @@ cfile_buffer *cfile_buffer_alloc(
  * \param private a pointer to the implementation's private data.  This is
  * then passed to the supplied read_into_buffer, which can then cast it back.
  */
-char buf_fgetc(cfile_buffer *bp, void *private) {
+char buf_fgetc(cfile_buffer *bp, cfile *private) {
     if (bp->buflen == bp->bufpos) {
-        bp->bufpos = 0;
-        bp->buflen = bp->read_into_buffer(private, bp->buffer, bp->bufsize);
+        READ_BUFFER;
         if (bp->buflen <= 0) return EOF;
     }
     return bp->buffer[bp->bufpos++]; /* Ah, the cleverness of postincrement */
@@ -83,7 +90,7 @@ char buf_fgetc(cfile_buffer *bp, void *private) {
  * end of line.
  */
 
-char *buf_fgets(cfile_buffer *bp, char *str, size_t len, void *private) {
+char *buf_fgets(cfile_buffer *bp, char *str, size_t len, cfile *private) {
     /* Implementation modified from glibc's stdio.c */
     char *ptr = str;
 
@@ -92,8 +99,7 @@ char *buf_fgets(cfile_buffer *bp, char *str, size_t len, void *private) {
     while (--len) {
         /* If we need more string, then get it */
         if (bp->buflen == bp->bufpos) {
-            bp->bufpos = 0;
-            bp->buflen = bp->read_into_buffer(private, bp->buffer, bp->bufsize);
+            READ_BUFFER;
             if (bp->buflen <= 0) {
                 if (ptr == str) return NULL;
                 break;
@@ -106,6 +112,47 @@ char *buf_fgets(cfile_buffer *bp, char *str, size_t len, void *private) {
 
     *ptr = '\0';
     return str;
+}
+
+/*! \brief Fill a chunk of memory from the buffer.
+ * 
+ * Copy len bytes from the buffer to the output pointer, refilling the buffer
+ * when necessary.
+ * 
+ * \param bp the buffer to read from
+ * \param target the memory to write to
+ * \param len the number of bytes to read
+ * \param private the private information of the implementation
+ * \returns The number of bytes read, which may be less than requested if
+ * we ran out of file.
+ */
+size_t buf_fread(cfile_buffer *bp, void *target, size_t len, cfile *private) {
+    char *ptr = target;
+    size_t this_chunk, total_copied;
+
+    if (len <= 0) return 0;
+    
+    for (;;) {
+        /* fill buffer if required */
+        if (bp->bufpos == bp->buflen) {
+            READ_BUFFER;
+            if (bp->buflen == 0) {
+                if (ptr == target) { return 0; }
+                break;
+            }
+        }
+        
+        /* I'm sure there's a more efficient way to do this */
+        this_chunk = bp->buflen - bp->bufpos;
+        this_chunk = (len <= this_chunk) ? len : this_chunk;
+        memcpy(ptr, bp->buffer + bp->bufpos, this_chunk);
+        ptr += this_chunk;
+        len -= this_chunk;
+        bp->bufpos += this_chunk;
+        total_copied += this_chunk;
+    }
+    
+    return total_copied;
 }
 
 /*! \brief Is the buffer empty?

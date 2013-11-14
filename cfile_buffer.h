@@ -24,6 +24,8 @@
 #ifndef CFILE_BUFFER_H
 #define CFILE_BUFFER_H
 
+#include "cfile.h"
+
 /*! \brief Internal buffer handling structure
  * 
  * Both bzip2 and xz have no 'fgets' or 'fgetc' equivalents.  For reads, we
@@ -55,7 +57,7 @@ typedef struct cfile_buffer_struct {
     /*! our position in the buffer */
     size_t bufpos;
     /*! a function to read more into this buffer */
-    size_t (*read_into_buffer)(void *private, const char* buffer, size_t size);
+    size_t (*read_into_buffer)(cfile *private, const char* buffer, size_t size);
 } cfile_buffer;
 
 /*! \brief Initialise the buffer structure
@@ -70,7 +72,7 @@ cfile_buffer *cfile_buffer_alloc(
     /*! The size of the buffer to allocate, in bytes */
     size_t size,
     /*! The read function you want to use */
-    size_t (*read_into_buffer)(void *private, const char* buffer, size_t size)
+    size_t (*read_into_buffer)(cfile *private, const char* buffer, size_t size)
 );
 
 /*! \brief Read one character from the buffer
@@ -81,7 +83,7 @@ cfile_buffer *cfile_buffer_alloc(
  * This can be used as the basis of fgets, but hopefully a more efficient
  * implementation of the latter can be achieved.
  */
-char buf_fgetc(cfile_buffer *bp, void *private);
+char buf_fgetc(cfile_buffer *bp, cfile *private);
 
 /*! \brief Read a string from the buffer until newline or EOF.
  * 
@@ -92,7 +94,21 @@ char buf_fgetc(cfile_buffer *bp, void *private);
  * end of line.
  */
 
-char *buf_fgets(cfile_buffer *bp, char *str, size_t len, void *private);
+char *buf_fgets(cfile_buffer *bp, char *str, size_t len, cfile *private);
+
+/*! \brief Fill a chunk of memory from the buffer.
+ * 
+ * Copy len bytes from the buffer to the output pointer, refilling the buffer
+ * when necessary.
+ * 
+ * \param bp the buffer to read from
+ * \param target the memory to write to
+ * \param len the number of bytes to read
+ * \param private the private information of the implementation
+ * \returns The number of bytes read, which may be less than requested if
+ * we ran out of file.
+ */
+size_t buf_fread(cfile_buffer *bp, void *target, size_t len, cfile *private);
 
 /*! \brief Is the buffer empty?
  * 
