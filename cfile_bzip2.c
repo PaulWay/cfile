@@ -263,8 +263,8 @@ static void bzip_attempt_store(cfile *fp, off_t size) {
  * This provides uncompressed data to the generic buffer implementation.
  */
 
-size_t bz_read_into_buffer(void *private, const char* buffer, size_t size);
-size_t bz_read_into_buffer(void *private, const char* buffer, size_t size) {
+size_t bz_read_into_buffer(cfile *private, const char* buffer, size_t size);
+size_t bz_read_into_buffer(cfile *private, const char* buffer, size_t size) {
     cfile_bzip2 *cfbp = (cfile_bzip2 *)private;
     return BZ2_bzread(cfbp->bp, (char *)buffer, size);
 }
@@ -393,7 +393,7 @@ bool bzip2_eof(cfile *fp) {
  
 char *bzip2_gets(cfile *fp, char *str, size_t len) {
     cfile_bzip2 *cfbp = (cfile_bzip2 *)fp;
-    return buf_fgets(cfbp->buffer, str, len, (void *)cfbp);
+    return buf_fgets(cfbp->buffer, str, len, fp);
 }
 
 /*! \brief Print a formatted string to the file, from another function
