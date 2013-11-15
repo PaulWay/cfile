@@ -45,7 +45,8 @@ typedef struct cfile_xz {
     cfile inherited; /*< our inherited function table */
     FILE *xf;        /*< the actual xz file - just a standard handle */
     lzma_stream stream; /*< the LZMA stream information */
-    bool decoding;    /*< are we decoding this file, or encoding? */
+    bool writing;    /*< are we writing this file (i.e. encoding it),
+                         or reading (i.e. decoding)? */
     cfile_buffer *buffer; /*< our buffer structure */
 } cfile_xz;
 
@@ -89,7 +90,6 @@ cfile *xz_open(const char *name, /*!< The name of the file to open */
         return NULL;
     }
     
-    cfxp->decoding = strends(name, '.xz');
     cfxp = (cfile_xz *)cfile_alloc(&xz_cfile_table, name, mode);
     if (!cfxp) {
         errno = ENOMEM;
@@ -97,26 +97,31 @@ cfile *xz_open(const char *name, /*!< The name of the file to open */
         return NULL;
     }
 
-    cfxp->lzma_stream = LZMA_STREAM_INIT;
-    if (cfxp->decoding) {
-        /* Allow concatenated files to be read - changes read semantics */
-        rtn = lzma_auto_decoder(cfxp->xz_stream, UINT64_MAX, LZMA_CONCATENATED);
-    } else {
-        rtn = lzma_easy_encoder(cfxp->xz_stream, 9, LZMA_CHECK_CRC64);
-    }
-    
-    if (rtn != LZMA_OK) {
-        errno = EINVAL;
-        fclose(own_file);
-        talloc_free(cfxp);
-        return NULL;
-    }
-    
     cfxp->buffer = cfile_buffer_alloc(cfxp, XZ_BUFFER_SIZE, xz_read_into_buffer);
     if (!cfxp->buffer) {
         errno = ENOMEM;
         fclose(own_file);
         talloc_free(cfxp);
+        return NULL;
+    }
+    
+    cfxp->lzma_stream = LZMA_STREAM_INIT;
+    cfxp->writing = (mode[0] == 'w');
+    if (cfxp->writing) {
+        rtn = lzma_easy_encoder(cfxp->stream, 9, LZMA_CHECK_CRC64);
+        cfxp->stream.next_out = cfxp->buffer.buffer;
+        cfxp->stream.avail_out = XZ_BUFFER_SIZE;
+    } else {
+        /* Allow concatenated files to be read - changes read semantics */
+        rtn = lzma_auto_decoder(cfxp->stream, UINT64_MAX, LZMA_CONCATENATED);
+        cfxp->stream.next_in =  cfxp->buffer.buffer;
+        cfxp->stream.avail_in = XZ_BUFFER_SIZE;
+    }
+    
+    if (rtn != LZMA_OK) {
+        errno = EINVAL;
+        fclose(own_file);
+        talloc_free(cfxp); /* includes buffer */
         return NULL;
     }
     
@@ -228,7 +233,23 @@ ssize_t xz_read(cfile *fp, void *ptr, size_t size, size_t num) {
  
 ssize_t xz_write(cfile *fp, const void *ptr, size_t size, size_t num) {
     cfile_xz *cfxp = (cfile_xz *)fp;
-    ssize_t rtn = BZ2_bzwrite(cfxp->bp, (void *)ptr, size * num);
+    cfxp->stream.next_in = ptr;
+    cfxp->stream.avail_in = size * num;
+    ssize_t written = 0;
+    for (;;) {
+        lzma_ret rtn = lzma_code(&cfxp->stream, LZMA_RUN);
+        if (rtn != LZMA_OK) {
+            /* do anything else? */
+            return 0;
+        }
+        /* Leave early if there's still room for more compressed data */
+        if (cfxp->stream.avail_out == cfxp->buffer.bufsize) break;
+        /* Write the entire buffer, reset pointer and available size */
+        fwrite(cfxp->stream.next_out, sizeof(uint8_t),
+         cfxp->buffer.bufsize, cfxp->xf);
+        cfxp->stream.next_out = cfxp->buffer.buffer;
+        cfxp->stream.avail_out = cfxp->buffer.bufsize;
+    }
     return rtn;
 }
 
