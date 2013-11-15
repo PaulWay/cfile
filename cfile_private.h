@@ -66,6 +66,20 @@ typedef struct cfile_vtable {
 
 /*! \brief The cfile 'class'
  *
+ * If you ever find yourself wondering how this works, check on
+ * https://plus.google.com/u/0/+PaulWayper/posts/Uek239oqcSm
+ * 
+ * In short: every implementation creates their own (private) structure
+ * which includes this structure as its first member.  The allocator
+ * is given the size of the (larger) private structure.  The cfile
+ * routines only see the first part, being the vtable and the name.
+ * The implementations cast that into their own structure, and they
+ * instantly have all that (if they need it, which they usually don't)
+ * and their own fields.
+ * 
+ * No need for extra pointers or extra allocs or even extra dereferences.
+ * 
+ * I acknowledge my lasting debt to Peter Miller for his advice here.
  */
 
 typedef struct cfile {
