@@ -107,21 +107,36 @@ int encode(const char *filename) {
 		);*/
 
 		rtn = lzma_code(&xz_stream, LZMA_RUN);
-		in_buf[linelen] = '\0';
-		/*printf("Read %zu bytes, coding returned %s, output has %lu bytes\n", 
+		printf("Read %zu bytes, coding returned %s, output has %lu bytes\n", 
 		 linelen, lzma_ret_code[rtn], BUFFER_SIZE - xz_stream.avail_out
-		);*/
+		);
+		if (rtn != LZMA_OK) {
+			printf("   Error %s from lzma_code - finishing up.\n",
+			 lzma_ret_code[rtn]
+			);
+			break;
+		}
 
 		/* We have to buffer the write process here too... */
 		if (xz_stream.avail_out == 0) {
-			fwrite(out_buf, sizeof(uint8_t), BUFFER_SIZE, outfh);
-			printf("At %lu bytes of input, wrote %d bytes to disk\n",
-			 filelen, BUFFER_SIZE
-			);
+			for (;;) {
+				fwrite(out_buf, sizeof(uint8_t), BUFFER_SIZE, outfh);
+				printf("Wrote %d bytes to disk, avail_in = %d\n",
+				 BUFFER_SIZE, xz_stream.avail_in
+				);
+				/* reset the output buffer */
+				xz_stream.next_out = out_buf;
+				xz_stream.avail_out = BUFFER_SIZE;
+				rtn = lzma_code(&xz_stream, LZMA_RUN);
+				printf("   after lzma_code in write loop, avail_in = %d, avail_out = %d\n",
+				 xz_stream.avail_in, xz_stream.avail_out
+				);
+				if (xz_stream.avail_out > 0) {
+					printf("Exiting loop\n");
+					break;
+				}
+			}
 			
-			/* reset the output buffer */
-			xz_stream.next_out = out_buf;
-			xz_stream.avail_out = BUFFER_SIZE;
 		}
 		
 	}
