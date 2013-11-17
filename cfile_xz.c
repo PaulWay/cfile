@@ -48,6 +48,7 @@ typedef struct cfile_xz {
     bool writing;    /*< are we writing this file (i.e. encoding it),
                          or reading (i.e. decoding)? */
     cfile_buffer *buffer; /*< our buffer structure */
+    uint8_t *dec_buf; /*< temporary storage for decode reads */
 } cfile_xz;
 
 static const cfile_vtable xz_cfile_table;
@@ -67,7 +68,7 @@ static const cfile_vtable xz_cfile_table;
 size_t xz_read_into_buffer(void *private, const char* buffer, size_t size);
 size_t xz_read_into_buffer(void *private, const char* buffer, size_t size) {
     cfile_xz *cfxp = (cfile_xz *)private;
-
+	
 }
 
 /*! \brief Open a xz file for reading or writing
@@ -99,6 +100,13 @@ cfile *xz_open(const char *name, /*!< The name of the file to open */
 
     cfxp->buffer = cfile_buffer_alloc(cfxp, XZ_BUFFER_SIZE, xz_read_into_buffer);
     if (!cfxp->buffer) {
+        errno = ENOMEM;
+        fclose(own_file);
+        talloc_free(cfxp);
+        return NULL;
+    }
+    cfxp->dec_buf = talloc_array(cfxp, uint8_t, XZ_BUFFER_SIZE);
+    if (!cfxp->dec_buf) {
         errno = ENOMEM;
         fclose(own_file);
         talloc_free(cfxp);
@@ -152,9 +160,39 @@ off_t xz_size(cfile *fp) {
 
 bool xz_eof(cfile *fp) {
     cfile_xz *cfxp = (cfile_xz *)fp;
-    if (feof(cfxp->fp)) return 1;
-    if (buf_empty(cfxp->buffer)) return 1;
-    return 0;
+    /* we are done if the input file is empty and the buffer is 
+     * exhausted too.  Asking feof on a writing file is nonsensical. */
+    return feof(cfxp->fp) && buf_empty(cfxp->buffer);
+}
+
+/*! \brief Read callback function to read more data for buffer
+ * 
+ * This provides uncompressed data to the generic buffer implementation.
+ */
+
+size_t xz_read_into_buffer(cfile *private);
+size_t xz_read_into_buffer(cfile *private) {
+    cfile_xz *cfxp = (cfile_xz *)private;
+    size_t from_file = 0;
+    lzma_ret rtn;
+    
+    /* Get bytes from lzma.  If its buffer is empty, then we read more
+     * data from the file and get it to do more decompression.  Otherwise,
+     * we may not fill our buffer but we will get bytes to pass back. */
+	
+    if (cxp->stream->avail_out == 0) {
+        from_file = fread(cfxp->dec_buf, sizeof(uint8_t), XZ_BUFFER_SIZE, cfxp->xf);
+        cfxp->stream->next_in = cfxp->dec_buf;
+        cfxp->stream->avail_in = from_file;
+        cfxp->stream->next_in = cfxp->buffer->buffer;
+        cfxp->stream->avail_out = cfxp->buffer->bufsize;
+        rtn = lzma_code(cfxp->stream, LZMA_RUN);
+        if (rtn != LZMA_OK) {
+            /* What? */
+            return 0;
+        }
+    }
+    return cfxp->stream->bufsize - cfxp->stream->avail_out;
 }
 
 /*! \brief Get a string from the file, up to a maximum length or newline.
