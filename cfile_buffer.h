@@ -57,7 +57,7 @@ typedef struct cfile_buffer_struct {
     /*! our position in the buffer */
     size_t bufpos;
     /*! a function to read more into this buffer */
-    size_t (*read_into_buffer)(cfile *private, const char* buffer, size_t size);
+    size_t (*read_into_buffer)(cfile *private);
 } cfile_buffer;
 
 /*! \brief Initialise the buffer structure
@@ -72,7 +72,7 @@ cfile_buffer *cfile_buffer_alloc(
     /*! The size of the buffer to allocate, in bytes */
     size_t size,
     /*! The read function you want to use */
-    size_t (*read_into_buffer)(cfile *private, const char* buffer, size_t size)
+    size_t (*read_into_buffer)(cfile *private)
 );
 
 /*! \brief Read one character from the buffer

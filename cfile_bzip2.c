@@ -263,10 +263,10 @@ static void bzip_attempt_store(cfile *fp, off_t size) {
  * This provides uncompressed data to the generic buffer implementation.
  */
 
-size_t bz_read_into_buffer(cfile *private, const char* buffer, size_t size);
-size_t bz_read_into_buffer(cfile *private, const char* buffer, size_t size) {
+size_t bz_read_into_buffer(cfile *private);
+size_t bz_read_into_buffer(cfile *private) {
     cfile_bzip2 *cfbp = (cfile_bzip2 *)private;
-    return BZ2_bzread(cfbp->bp, (char *)buffer, size);
+    return BZ2_bzread(cfbp->bp, (char *)cfbp->buffer->buffer, cfbp->buffer->bufsize);
 }
 
 /*! \brief Open a file for reading or writing

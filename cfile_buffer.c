@@ -30,7 +30,7 @@
 /* Since we do this a lot: */
 #define READ_BUFFER \
     bp->bufpos = 0; \
-    bp->buflen = bp->read_into_buffer(private, bp->buffer, bp->bufsize);
+    bp->buflen = bp->read_into_buffer(private);
 
 
 /*! brief Initialise the buffer structure
@@ -42,7 +42,7 @@
 cfile_buffer *cfile_buffer_alloc(
 	const void *context,
     size_t size,
-	size_t (*read_into_buffer)(cfile *private, const char* buffer, size_t size)
+	size_t (*read_into_buffer)(cfile *private)
 ) {
     cfile_buffer *buf = talloc(context, cfile_buffer);
     if (!buf) {
