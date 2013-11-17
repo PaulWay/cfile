@@ -37,7 +37,7 @@ CPPFLAGS = \
 	-I.
 
 all: libcfile.a all-bin
-all-bin: test-cat test_prelude
+all-bin: test-cat test_prelude test-xz
 
 cfile_normal.o: cfile.h cfile_normal.h cfile_private.h
 
@@ -65,6 +65,9 @@ libcfile.a: $(libfiles)
 
 test-cat: test-cat.o libcfile.a
 	gcc -g test-cat.o -o $@ -L. -lcfile -lz -lbz2 -ltalloc
+
+test-xz: test-cat.o test-xz.c
+	gcc -g test-cat.o -o $@ -L. -lcfile -lz -lbz2 -ltalloc -llzma
 
 _info: _info.o
 	gcc -g _info.o -o $@
