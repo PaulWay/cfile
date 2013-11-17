@@ -32,7 +32,14 @@
 
 #define BUFFER_SIZE 4096
 
-static char *lzma_ret_code[12] = {
+typedef struct bufstruct_struct {
+	char *buffer;
+	size_t bufsize;
+	size_t buflen;
+	size_t bufpos;
+} bufstruct;
+
+static const char *lzma_ret_code[12] = {
 	"LZMA_OK",
 	"LZMA_STREAM_END",
 	"LZMA_NO_CHECK",
@@ -49,15 +56,14 @@ static char *lzma_ret_code[12] = {
 
 static void *context = NULL;
 
-int write_one_line(
- char *in_buf, 
- size_t linelen, 
- lzma_stream *xz_stream, 
- uint8_t *out_buf, 
- FILE *outfh) {
+int write_one_line(char *in_buf, size_t linelen, lzma_stream *xz_stream, 
+ uint8_t *out_buf, FILE *outfh);
+
+int write_one_line(char *in_buf, size_t linelen, lzma_stream *xz_stream, 
+ uint8_t *out_buf, FILE *outfh) {
+	lzma_ret rtn;
 	xz_stream->next_in = (uint8_t *)in_buf;
 	xz_stream->avail_in = linelen;
-	lzma_ret rtn;
 
 	/*printf("Read '%.*s' -> %zu chars\n", 
 	 (int)xz_stream->avail_in - 1, xz_stream->next_in, xz_stream->avail_in
@@ -78,14 +84,14 @@ int write_one_line(
 	if (xz_stream->avail_out == 0) {
 		for (;;) {
 			fwrite(out_buf, sizeof(uint8_t), BUFFER_SIZE, outfh);
-			printf("Wrote %d bytes to disk, avail_in = %d\n",
+			printf("Wrote %d bytes to disk, avail_in = %zu\n",
 			 BUFFER_SIZE, xz_stream->avail_in
 			);
 			/* reset the output buffer */
 			xz_stream->next_out = out_buf;
 			xz_stream->avail_out = BUFFER_SIZE;
 			rtn = lzma_code(xz_stream, LZMA_RUN);
-			printf("   after lzma_code in write loop, avail_in = %d, avail_out = %d\n",
+			printf("   after lzma_code in write loop, avail_in = %zu, avail_out = %zu\n",
 			 xz_stream->avail_in, xz_stream->avail_out
 			);
 			if (xz_stream->avail_out > 0) {
@@ -98,12 +104,21 @@ int write_one_line(
 	return 1;
 }
 
+/* Stolen from ccan/str/str.h */
+static inline bool strends(const char *str, const char *postfix)
+{
+       if (strlen(str) < strlen(postfix))
+               return false;
+
+       return !strcmp(str + strlen(str) - strlen(postfix), postfix);
+}
+
+int encode(const char *filename);
 int encode(const char *filename) {
 	lzma_stream xz_stream = LZMA_STREAM_INIT;
 	lzma_ret rtn = 0;
 	char *in_buf = NULL;
 	uint8_t *out_buf = NULL;
-	size_t linelen = 0;
 	ssize_t filelen = 0;
 	FILE *infh;
 	FILE *outfh;
@@ -184,6 +199,143 @@ int encode(const char *filename) {
 	talloc_free(in_buf);
 	talloc_free(out_buf);
 	talloc_free(outname);
+	lzma_end(&xz_stream);
+	
+	/* Finish up */
+	printf("Talloc report when finishing encoding, after freeing memory:\n");
+	talloc_report_full(context, stderr);
+	return 0;
+}
+
+ssize_t decompress_from_file(
+ uint8_t *in_buf, bufstruct *buf, lzma_stream *xz_stream, FILE *in_fh);
+
+ssize_t decompress_from_file(
+ uint8_t *in_buf, bufstruct *buf, lzma_stream *xz_stream, FILE *in_fh) {
+	/* Implementation of fgets modified from glibc's stdio.c */
+    char *ptr = buf->buffer;
+    size_t read_size = 0;
+    ssize_t put_size = 0;
+	lzma_ret rtn = 0;
+	size_t len = buf->bufsize;
+
+	printf("Decompress_into_file()\n");
+	
+    if (len <= 0) return 0;
+
+    while (--len) {
+		put_size++;
+		
+        /* If we need more string, then get it */
+        if (buf->bufpos == buf->buflen) {
+			printf("      out of buffer, fetch more from lzma\n");
+
+			if (xz_stream->avail_in == 0) {
+				printf("      lzma empty, fetch more from file...");
+				/* No: give it more from the file */
+				read_size = fread(in_buf, sizeof(uint8_t), BUFFER_SIZE, in_fh);
+				printf("      read %zu bytes\n", read_size);
+				if (read_size == 0) {
+					printf("      no more from file: finish here.\n");
+					if (ptr == buf->buffer) {
+						*ptr = '\0';
+						return 0;
+					}
+					break;
+				} 
+				xz_stream->next_in   = in_buf;
+				xz_stream->avail_in  = read_size;
+			}
+			xz_stream->next_out  = (uint8_t *)buf->buffer;
+			xz_stream->avail_out = buf->bufsize;
+			rtn = lzma_code(xz_stream, LZMA_RUN);
+			if (rtn != LZMA_OK) {
+				printf("Error in decode of %zu byte block: %s(%d)\n",
+				 read_size, lzma_ret_code[rtn], rtn);
+				/* Do something else? */
+			}
+			printf("      lzma given %zu bytes to decode, returned %s[%d],"
+			 " avail_in=%zu, avail_out=%zu\n",
+			 read_size, lzma_ret_code[rtn], rtn, xz_stream->avail_in,
+			 xz_stream->avail_out);
+			buf->bufpos = 0;
+			buf->buflen = buf->bufsize - xz_stream->avail_out;
+        }
+
+        /* Put next character into target, check for end of line */
+        if ((*ptr++ = buf->buffer[(buf->bufpos)++]) == '\n') break;
+		printf("   len=%zu, put_size=%zu, buflen=%zu, bufpos=%zu, char=%c\n",
+		 len, put_size, buf->buflen, buf->bufpos, buf->buffer[buf->bufpos - 1]);
+    }
+
+    *ptr = '\0';
+	return put_size-1;
+}
+
+int decode(const char *filename);
+int decode(const char *filename) {
+	lzma_stream xz_stream = LZMA_STREAM_INIT;
+	lzma_ret rtn = 0;
+	uint8_t *in_buf = NULL;
+	bufstruct *out_buf;
+	ssize_t filelen = 0, readlen = 0;
+	FILE *in_fh, *out_fh;
+	char *outname = NULL;
+
+    in_buf  = talloc_array(context, uint8_t, BUFFER_SIZE);
+    out_buf = talloc(context, bufstruct);
+    out_buf->buffer = talloc_array(out_buf, char, BUFFER_SIZE);
+    out_buf->bufsize = BUFFER_SIZE;
+    out_buf->buflen = 0;
+    out_buf->bufpos = 0;
+    
+	/* Initialise decoder.  Put input and output buffer information in
+	 * structure and then call lzma_auto_decoder to let liblzma work
+	 * out what we're decoding. */
+	printf("Using auto decoder... ");
+	xz_stream.next_out = (uint8_t *)out_buf->buffer;
+	xz_stream.avail_out = BUFFER_SIZE;
+	rtn = lzma_auto_decoder(&xz_stream, UINT64_MAX, LZMA_CONCATENATED);
+	printf("Returned %s\n", lzma_ret_code[rtn]);
+
+	/* open the input file */
+	in_fh = fopen(filename, "r");
+	if (!in_fh) {
+		fprintf(stderr, "Failed to open %s: %s(%d)\n",
+		 filename, strerror(errno), errno
+		);
+		return errno;
+	}
+
+	/* Open the output file - clone the truncated name and terminate*/
+	outname = talloc_memdup(context, filename, strlen(filename)-3+1);
+	outname[strlen(filename)-3] = '\0';
+	printf("Writing %s\n", outname);
+	out_fh = fopen(outname, "w");
+	if (!out_fh) {
+		fprintf(stderr, "Failed to open %s: %s(%d)\n",
+		 filename, strerror(errno), errno
+		);
+		return errno;
+	}
+	
+	/* Read blocks from the file, decompressing each one as we go. */
+	for (;;) {
+		readlen = decompress_from_file(in_buf, out_buf, &xz_stream, in_fh);
+		printf("got %zu bytes from decompress\n", readlen);
+		fwrite(out_buf->buffer, sizeof(char), readlen, out_fh);
+		if (readlen == 0) break;
+		filelen += readlen;
+	}
+	fclose(in_fh);
+	
+	fclose(out_fh);
+	printf("Closed output, wrote %lu bytes == %lu bytes\n", filelen, xz_stream.total_out);
+	
+	/* Free up our allocated memory */
+	talloc_free(in_buf);
+	talloc_free(out_buf);
+	talloc_free(outname);
 	
 	/* Finish up */
 	printf("Talloc report when finishing encoding, after freeing memory:\n");
@@ -192,16 +344,20 @@ int encode(const char *filename) {
 }
 
 int main(int argc, char *argv[]) {
+    int n;
 
     talloc_enable_leak_report();
     context = talloc_init("main test-xz context");
     cfile_set_context(context);
-    int n;
 
 	/* input file is our own code */
 	if (argc > 1) {
 		for (n=1; n<argc; n++) {
-			encode(argv[n]);
+			if (strends(argv[n], ".xz")) {
+				decode(argv[n]);
+			} else {
+				encode(argv[n]);
+			}
 		}
 	} else {
 		encode("test-xz.c");
@@ -211,4 +367,3 @@ int main(int argc, char *argv[]) {
     talloc_free(context);
     return EXIT_SUCCESS;
 }
-/*flonge*/
