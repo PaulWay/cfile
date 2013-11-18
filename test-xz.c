@@ -208,23 +208,30 @@ int encode(const char *filename) {
 }
 
 ssize_t decompress_from_file(
- uint8_t *in_buf, bufstruct *buf, lzma_stream *xz_stream, FILE *in_fh);
+ uint8_t *in_buf, char *out_str, bufstruct *buf,
+ lzma_stream *xz_stream, FILE *in_fh);
 
 ssize_t decompress_from_file(
- uint8_t *in_buf, bufstruct *buf, lzma_stream *xz_stream, FILE *in_fh) {
+ uint8_t *in_buf, char *out_str, bufstruct *buf,
+ lzma_stream *xz_stream, FILE *in_fh) {
 	/* Implementation of fgets modified from glibc's stdio.c */
-    char *ptr = buf->buffer;
+    char *ptr = out_str;
     size_t read_size = 0;
     ssize_t put_size = 0;
 	lzma_ret rtn = 0;
 	size_t len = buf->bufsize;
 
-	printf("Decompress_into_file()\n");
+	printf("Decompress_into_file(bufsize = %zu)\n", len);
 	
-    if (len <= 0) return 0;
+    if (len <= 0) { 
+		printf("   bufsize <= 0, ending early\n"); 
+		return 0;
+	}
 
     while (--len) {
 		put_size++;
+		printf("   len=%zu, put_size=%zu, bufpos=%zu == buflen=%zu?\n",
+		 len, put_size, buf->bufpos, buf->buflen);
 		
         /* If we need more string, then get it */
         if (buf->bufpos == buf->buflen) {
@@ -234,7 +241,7 @@ ssize_t decompress_from_file(
 				printf("      lzma empty, fetch more from file...");
 				/* No: give it more from the file */
 				read_size = fread(in_buf, sizeof(uint8_t), BUFFER_SIZE, in_fh);
-				printf("      read %zu bytes\n", read_size);
+				printf("... read %zu bytes\n", read_size);
 				if (read_size == 0) {
 					printf("      no more from file: finish here.\n");
 					if (ptr == buf->buffer) {
@@ -263,12 +270,16 @@ ssize_t decompress_from_file(
         }
 
         /* Put next character into target, check for end of line */
+        printf("   is buffer[%zu] = \\n? %s\n",
+         buf->bufpos, buf->buffer[buf->bufpos] == '\n' ? "yes": "no");
         if ((*ptr++ = buf->buffer[(buf->bufpos)++]) == '\n') break;
-		printf("   len=%zu, put_size=%zu, buflen=%zu, bufpos=%zu, char=%c\n",
-		 len, put_size, buf->buflen, buf->bufpos, buf->buffer[buf->bufpos - 1]);
+		/* printf("   len=%zu, put_size=%zu, buflen=%zu, bufpos=%zu, char=%c\n",
+		 len, put_size, buf->buflen, buf->bufpos, buf->buffer[buf->bufpos - 1]); */
     }
 
     *ptr = '\0';
+    printf("   returning %zu, string in buffer = %s\n",
+     put_size-1, out_str);
 	return put_size-1;
 }
 
@@ -281,6 +292,7 @@ int decode(const char *filename) {
 	ssize_t filelen = 0, readlen = 0;
 	FILE *in_fh, *out_fh;
 	char *outname = NULL;
+	char *out_str = NULL;
 
     in_buf  = talloc_array(context, uint8_t, BUFFER_SIZE);
     out_buf = talloc(context, bufstruct);
@@ -288,6 +300,7 @@ int decode(const char *filename) {
     out_buf->bufsize = BUFFER_SIZE;
     out_buf->buflen = 0;
     out_buf->bufpos = 0;
+    out_str = talloc_array(context, char, BUFFER_SIZE);
     
 	/* Initialise decoder.  Put input and output buffer information in
 	 * structure and then call lzma_auto_decoder to let liblzma work
@@ -321,7 +334,7 @@ int decode(const char *filename) {
 	
 	/* Read blocks from the file, decompressing each one as we go. */
 	for (;;) {
-		readlen = decompress_from_file(in_buf, out_buf, &xz_stream, in_fh);
+		readlen = decompress_from_file(in_buf, out_str, out_buf, &xz_stream, in_fh);
 		printf("got %zu bytes from decompress\n", readlen);
 		fwrite(out_buf->buffer, sizeof(char), readlen, out_fh);
 		if (readlen == 0) break;
