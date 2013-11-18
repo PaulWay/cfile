@@ -45,6 +45,8 @@ cfile_gzip.o: cfile.h cfile_gzip.h cfile_private.h
 
 cfile_bzip2.o: cfile.h cfile_bzip2.h cfile_private.h cfile_buffer.h
 
+cfile_xz.o: cfile.h cfile_xz.h cfile_private.h cfile_buffer.h
+
 cfile.o: cfile.h cfile_private.h cfile_normal.h cfile_gzip.h cfile_bzip2.h cfile_buffer.h
 
 cfile_buffer.o: cfile.h cfile_buffer.h
@@ -54,6 +56,7 @@ libfiles = \
 	cfile_bzip2.o \
 	cfile_gzip.o \
 	cfile_normal.o \
+	cfile_xz.o \
 	cfile_null.o \
 	cfile_buffer.o
 
