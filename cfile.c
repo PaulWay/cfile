@@ -126,6 +126,7 @@
 #include "cfile_normal.h"
 #include "cfile_gzip.h"
 #include "cfile_bzip2.h"
+#include "cfile_xz.h"
 #include "cfile_null.h"
 
 
@@ -236,6 +237,8 @@ cfile *cfile_open(const char *name, const char *mode) {
                 rtn = gzip_open(name, mode);
             } else if (strstr(type, "bzip2 compressed data") != NULL) {
                 rtn = bzip2_open(name, mode);
+            } else if (strstr(type, "XZ compressed data") != NULL) {
+				rtn = xz_open(name, mode);
             } else {
                 rtn = normal_open(name, mode);
             }
@@ -250,6 +253,8 @@ cfile *cfile_open(const char *name, const char *mode) {
         return gzip_open(name, mode);
     } else if (strends(name, ".bz2")) {
         return bzip2_open(name, mode);
+    } else if (strends(name, ".xz")) {
+		return xz_open(name, mode);
     } else {
         return normal_open(name, mode);
     }

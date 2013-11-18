@@ -67,7 +67,7 @@ libcfile.a: $(libfiles)
 	ar cq $@ $(libfiles)
 
 test-cat: test-cat.o libcfile.a
-	gcc ${CFLAGS} -g test-cat.o -o $@ -L. -lcfile -lz -lbz2 -ltalloc
+	gcc ${CFLAGS} -g test-cat.o -o $@ -L. -lcfile -lz -lbz2 -ltalloc -llzma
 
 test-xz: libcfile.a test-xz.c
 	gcc ${CFLAGS} test-xz.c -o $@ -L. -lcfile -lz -lbz2 -ltalloc -llzma
