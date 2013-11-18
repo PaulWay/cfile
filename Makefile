@@ -37,7 +37,7 @@ CPPFLAGS = \
 	-I.
 
 all: libcfile.a all-bin
-all-bin: test-cat test_prelude test-xz
+all-bin: test-cat test-xz test_prelude
 
 cfile_normal.o: cfile.h cfile_normal.h cfile_private.h
 
@@ -50,30 +50,30 @@ cfile.o: cfile.h cfile_private.h cfile_normal.h cfile_gzip.h cfile_bzip2.h cfile
 cfile_buffer.o: cfile.h cfile_buffer.h
 
 libfiles = \
-        cfile.o \
-        cfile_bzip2.o \
-        cfile_gzip.o \
-        cfile_normal.o \
-        cfile_null.o \
+	cfile.o \
+	cfile_bzip2.o \
+	cfile_gzip.o \
+	cfile_normal.o \
+	cfile_null.o \
 	cfile_buffer.o
 
-#        cfile_ebadf.o \
+#	cfile_ebadf.o \
 
 libcfile.a: $(libfiles)
 	-test -f $@ && rm $@ || true
 	ar cq $@ $(libfiles)
 
 test-cat: test-cat.o libcfile.a
-	gcc -g test-cat.o -o $@ -L. -lcfile -lz -lbz2 -ltalloc
+	gcc ${CFLAGS} -g test-cat.o -o $@ -L. -lcfile -lz -lbz2 -ltalloc
 
-test-xz: test-cat.o test-xz.c
-	gcc -g test-cat.o -o $@ -L. -lcfile -lz -lbz2 -ltalloc -llzma
+test-xz: libcfile.a test-xz.c
+	gcc ${CFLAGS} test-xz.c -o $@ -L. -lcfile -lz -lbz2 -ltalloc -llzma
 
 _info: _info.o
 	gcc -g _info.o -o $@
 
 clean:
-	rm -f *.o *.a test-cat
+	rm -f *.o *.a test-cat test-xz
 
 test_prelude: test/prelude.sh
 	cat test/prelude.sh > $@
