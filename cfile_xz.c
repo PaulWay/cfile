@@ -72,22 +72,22 @@ size_t xz_read_into_buffer(cfile *private) {
     lzma_ret rtn;
     
     /* If we need more data from the file, get it. */
-    if (cxp->stream->avail_out == 0) {
+    if (cfxp->stream.avail_out == 0) {
         from_file = fread(cfxp->dec_buf, sizeof(uint8_t), XZ_BUFFER_SIZE, cfxp->xf);
-        cfxp->stream->next_in = cfxp->dec_buf;
-        cfxp->stream->avail_in = from_file;
+        cfxp->stream.next_in = cfxp->dec_buf;
+        cfxp->stream.avail_in = from_file;
     }
 
     /* Now decode the next buffer full of data */
-    cfxp->stream->next_out = cfxp->buffer->buffer;
-    cfxp->stream->avail_out = cfxp->buffer->bufsize;
-    rtn = lzma_code(cfxp->stream, LZMA_RUN);
+    cfxp->stream.next_out = (uint8_t *)cfxp->buffer->buffer;
+    cfxp->stream.avail_out = cfxp->buffer->bufsize;
+    rtn = lzma_code(&cfxp->stream, LZMA_RUN);
     if (rtn != LZMA_OK) {
         /* What? */
         return 0;
     }
 
-    return cfxp->stream->bufsize - cfxp->stream->avail_out;
+    return cfxp->buffer->bufsize - cfxp->stream.avail_out;
 }
 
 /*! \brief Open a xz file for reading or writing
@@ -106,7 +106,7 @@ cfile *xz_open(const char *name, /*!< The name of the file to open */
     FILE *own_file;
 	lzma_ret rtn = 0;
     
-    if (!(own_file == fopen(name, mode))) {
+    if (!(own_file = fopen(name, mode))) {
         return NULL;
     }
     
@@ -116,6 +116,8 @@ cfile *xz_open(const char *name, /*!< The name of the file to open */
         fclose(own_file);
         return NULL;
     }
+
+    cfxp->xf = own_file;
 
     cfxp->buffer = cfile_buffer_alloc(cfxp, XZ_BUFFER_SIZE, xz_read_into_buffer);
     if (!cfxp->buffer) {
@@ -132,16 +134,17 @@ cfile *xz_open(const char *name, /*!< The name of the file to open */
         return NULL;
     }
     
-    cfxp->lzma_stream = LZMA_STREAM_INIT;
+    /* Can't do cfxp->stream = (LZMA_STREAM_INIT); because of macros */
+    memset((void *)&cfxp->stream, 0, sizeof(lzma_stream));
     cfxp->writing = (mode[0] == 'w');
     if (cfxp->writing) {
-        rtn = lzma_easy_encoder(cfxp->stream, 9, LZMA_CHECK_CRC64);
-        cfxp->stream.next_out = cfxp->buffer.buffer;
+        rtn = lzma_easy_encoder(&cfxp->stream, 9, LZMA_CHECK_CRC64);
+        cfxp->stream.next_out = (uint8_t *)cfxp->buffer->buffer;
         cfxp->stream.avail_out = XZ_BUFFER_SIZE;
     } else {
         /* Allow concatenated files to be read - changes read semantics */
-        rtn = lzma_auto_decoder(cfxp->stream, UINT64_MAX, LZMA_CONCATENATED);
-        cfxp->stream.next_in =  cfxp->buffer.buffer;
+        rtn = lzma_auto_decoder(&cfxp->stream, UINT64_MAX, LZMA_CONCATENATED);
+        cfxp->stream.next_in = (uint8_t *)cfxp->buffer->buffer;
         cfxp->stream.avail_in = XZ_BUFFER_SIZE;
     }
     
@@ -162,10 +165,15 @@ cfile *xz_open(const char *name, /*!< The name of the file to open */
  */
 
 off_t xz_size(cfile *fp) {
-    cfile_xz *cfxp = (cfile_xz *)fp;
+    /* cfile_xz *cfxp = (cfile_xz *)fp; */
     
     /* See source of xz for this - basically read the footer off the end of
      * the file and then try to find further footers earlier in the file */
+    FILE *my_fp;
+    
+    my_fp = fopen(fp->filename, "r");
+    fclose(my_fp);
+    return -1;
 }
 
 /*! \brief Returns true if we've reached the end of the file being read.
@@ -181,7 +189,7 @@ bool xz_eof(cfile *fp) {
     cfile_xz *cfxp = (cfile_xz *)fp;
     /* we are done if the input file is empty and the buffer is 
      * exhausted too.  Asking feof on a writing file is nonsensical. */
-    return feof(cfxp->fp) && buf_empty(cfxp->buffer);
+    return feof(cfxp->xf) && buf_empty(cfxp->buffer);
 }
 
 /*! \brief Get a string from the file, up to a maximum length or newline.
@@ -223,7 +231,7 @@ int xz_vprintf(cfile *fp, const char *fmt, va_list ap)
 int xz_vprintf(cfile *fp, const char *fmt, va_list ap) {
     int rtn;
     char *buf = talloc_vasprintf(fp, fmt, ap);
-    rtn = xz_write(fp, buf, strlen(buf));
+    rtn = xz_write(fp, buf, sizeof(char), strlen(buf));
     talloc_free(buf);
     return rtn;
 }
@@ -244,7 +252,25 @@ int xz_vprintf(cfile *fp, const char *fmt, va_list ap) {
  
 ssize_t xz_read(cfile *fp, void *ptr, size_t size, size_t num) {
     cfile_xz *cfxp = (cfile_xz *)fp;
-    return BZ2_bzread(cfxp->bp, ptr, size * num);
+    ssize_t read_bytes = 0;
+    ssize_t target_bytes = (size * num);
+    lzma_ret rtn;
+
+    cfxp->stream.next_in = ptr;
+    cfxp->stream.avail_in = num;
+    
+    do {
+        rtn = lzma_code(&cfxp->stream, LZMA_RUN);
+        if (rtn != LZMA_OK) {
+            /* Do something else? */
+            return read_bytes;
+        }
+        if (cfxp->stream.avail_in == 0) {
+            /* read more file into the buffer */
+            xz_read_into_buffer(fp);
+        }
+    } while (read_bytes < target_bytes);
+    return read_bytes;
 }
 
 /*! \brief Write a block of data from the file.
@@ -260,22 +286,24 @@ ssize_t xz_read(cfile *fp, void *ptr, size_t size, size_t num) {
  
 ssize_t xz_write(cfile *fp, const void *ptr, size_t size, size_t num) {
     cfile_xz *cfxp = (cfile_xz *)fp;
+    lzma_ret rtn;
+
     cfxp->stream.next_in = ptr;
     cfxp->stream.avail_in = size * num;
-    ssize_t written = 0;
+    
     for (;;) {
-        lzma_ret rtn = lzma_code(&cfxp->stream, LZMA_RUN);
+        rtn = lzma_code(&cfxp->stream, LZMA_RUN);
         if (rtn != LZMA_OK) {
             /* do anything else? */
             return 0;
         }
         /* Leave early if there's still room for more compressed data */
-        if (cfxp->stream.avail_out == cfxp->buffer.bufsize) break;
+        if (cfxp->stream.avail_out == cfxp->buffer->bufsize) break;
         /* Write the entire buffer, reset pointer and available size */
         fwrite(cfxp->stream.next_out, sizeof(uint8_t),
-         cfxp->buffer.bufsize, cfxp->xf);
-        cfxp->stream.next_out = cfxp->buffer.buffer;
-        cfxp->stream.avail_out = cfxp->buffer.bufsize;
+         cfxp->buffer->bufsize, cfxp->xf);
+        cfxp->stream.next_out = (uint8_t *)cfxp->buffer->buffer;
+        cfxp->stream.avail_out = cfxp->buffer->bufsize;
     }
     return rtn;
 }
@@ -284,13 +312,30 @@ ssize_t xz_write(cfile *fp, const void *ptr, size_t size, size_t num) {
  *
  *  This function flushes any data passed to write or printf but not
  *  yet written to disk.  If the file is being read, it has no effect.
+ *  This uses LZMA_FULL_FLUSH, which writes the current block but does
+ *  not attempt to force all unbuffered data out.  There may be some
+ *  impact on compression ratio, but not as much as LZMA_SYNC_FLUSH.
  * \param fp The file handle to flush.
  * \return the success of the file flush operation.
  */
  
 int xz_flush(cfile *fp) {
     cfile_xz *cfxp = (cfile_xz *)fp;
-    return BZ2_bzflush(cfxp->bp);
+    lzma_ret rtn;
+    size_t written;
+
+    for (;;) {
+        rtn = lzma_code(&cfxp->stream, LZMA_FULL_FLUSH);
+        if (rtn == LZMA_STREAM_END) {
+            break;
+        }
+        if (rtn != LZMA_OK) {
+            errno = EINVAL;
+            return EOF;
+        }
+    }
+    written = fwrite(cfxp->buffer->buffer, sizeof(char *), cfxp->buffer->bufsize - cfxp->stream.avail_out, cfxp->xf);
+    return written > 0;
 }
 
 /*! \brief Close the given file handle.
@@ -303,7 +348,10 @@ int xz_flush(cfile *fp) {
  
 int xz_close(cfile *fp) {
     cfile_xz *cfxp = (cfile_xz *)fp;
-
+    
+    xz_flush(fp);
+    lzma_end(&cfxp->stream);
+    return fclose(cfxp->xf);
 }
 
 /*! \brief The function dispatch table for xz files */
