@@ -244,11 +244,10 @@ ssize_t decompress_from_file(
 				printf("... read %zu bytes\n", read_size);
 				if (read_size == 0) {
 					printf("      no more from file: finish here.\n");
-					if (ptr == buf->buffer) {
+					if (len > 0) {
 						*ptr = '\0';
-						return 0;
 					}
-					break;
+					return 0;
 				} 
 				xz_stream->next_in   = in_buf;
 				xz_stream->avail_in  = read_size;
@@ -279,8 +278,8 @@ ssize_t decompress_from_file(
 
     *ptr = '\0';
     printf("   returning %zu, string in buffer = %s\n",
-     put_size-1, out_str);
-	return put_size-1;
+     put_size, out_str);
+	return put_size;
 }
 
 int decode(const char *filename);
@@ -336,8 +335,8 @@ int decode(const char *filename) {
 	for (;;) {
 		readlen = decompress_from_file(in_buf, out_str, out_buf, &xz_stream, in_fh);
 		printf("got %zu bytes from decompress\n", readlen);
-		fwrite(out_buf->buffer, sizeof(char), readlen, out_fh);
 		if (readlen == 0) break;
+		fwrite(out_buf->buffer, sizeof(char), readlen, out_fh);
 		filelen += readlen;
 	}
 	fclose(in_fh);
