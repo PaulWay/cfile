@@ -71,11 +71,15 @@ size_t xz_read_into_buffer(cfile *private) {
     size_t from_file = 0;
     lzma_ret rtn;
     
+    /*printf("XZRIB(avail_in=%zu, avail_out=%zu, buflen=%zu, bufpos=%zu)\n",
+     cfxp->stream.avail_in, cfxp->stream.avail_out, cfxp->buffer->buflen, cfxp->buffer->bufpos);*/
     /* If we need more data from the file, get it. */
-    if (cfxp->stream.avail_out == 0) {
+    if (cfxp->stream.avail_in == 0) {
         from_file = fread(cfxp->dec_buf, sizeof(uint8_t), XZ_BUFFER_SIZE, cfxp->xf);
         cfxp->stream.next_in = cfxp->dec_buf;
         cfxp->stream.avail_in = from_file;
+        /*printf("XZRIB: fetched %zu more from file into decode buffer\n",
+         from_file);*/
     }
 
     /* Now decode the next buffer full of data */
@@ -84,9 +88,12 @@ size_t xz_read_into_buffer(cfile *private) {
     rtn = lzma_code(&cfxp->stream, LZMA_RUN);
     if (rtn != LZMA_OK) {
         /* What? */
+        /*printf("XZRIB: got %d from lzma_code, bailing out\n", rtn);*/
         return 0;
     }
-
+    
+    /*printf("XZRIB: finished read, put %zu bytes in buffer\n", 
+     cfxp->buffer->bufsize - cfxp->stream.avail_out);*/
     return cfxp->buffer->bufsize - cfxp->stream.avail_out;
 }
 
@@ -145,7 +152,7 @@ cfile *xz_open(const char *name, /*!< The name of the file to open */
         /* Allow concatenated files to be read - changes read semantics */
         rtn = lzma_auto_decoder(&cfxp->stream, UINT64_MAX, LZMA_CONCATENATED);
         cfxp->stream.next_in = (uint8_t *)cfxp->buffer->buffer;
-        cfxp->stream.avail_in = XZ_BUFFER_SIZE;
+        cfxp->stream.avail_in = 0;
     }
     
     if (rtn != LZMA_OK) {
@@ -209,7 +216,7 @@ bool xz_eof(cfile *fp) {
  
 char *xz_gets(cfile *fp, char *str, size_t len) {
     cfile_xz *cfxp = (cfile_xz *)fp;
-    return buf_fgets(cfxp->buffer, str, len, (void *)cfxp);
+    return buf_fgets(cfxp->buffer, str, len, fp);
 }
 
 /*! \brief Print a formatted string to the file, from another function
@@ -267,7 +274,7 @@ ssize_t xz_read(cfile *fp, void *ptr, size_t size, size_t num) {
         }
         if (cfxp->stream.avail_in == 0) {
             /* read more file into the buffer */
-            xz_read_into_buffer(fp);
+            read_bytes += xz_read_into_buffer(fp);
         }
     } while (read_bytes < target_bytes);
     return read_bytes;
