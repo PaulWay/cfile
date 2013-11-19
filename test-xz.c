@@ -260,9 +260,8 @@ ssize_t decompress_from_file(
 				 read_size, lzma_ret_code[rtn], rtn);
 				/* Do something else? */
 			}
-			printf("      lzma given %zu bytes to decode, returned %s[%d],"
-			 " avail_in=%zu, avail_out=%zu\n",
-			 read_size, lzma_ret_code[rtn], rtn, xz_stream->avail_in,
+			printf("      lzma returned %s[%d], avail_in=%zu, avail_out=%zu\n",
+			 lzma_ret_code[rtn], rtn, xz_stream->avail_in,
 			 xz_stream->avail_out);
 			buf->bufpos = 0;
 			buf->buflen = buf->bufsize - xz_stream->avail_out;
@@ -277,8 +276,8 @@ ssize_t decompress_from_file(
     }
 
     *ptr = '\0';
-    printf("   returning %zu, string in buffer = %s\n",
-     put_size, out_str);
+    printf("   returning %zu, string in buffer = %.*s\n",
+     put_size, (int)put_size-1, out_str);
 	return put_size;
 }
 
