@@ -84,11 +84,10 @@ static void bzip_attempt_store(cfile *fp, off_t size);
 static off_t bzip_calculate_size(cfile *fp) {
     char *input;
     FILE *fpipe;
-    long fsize;
-
-    cfile_bzip2 *cfbp = (cfile_bzip2 *)fp;
+    off_t fsize;
     const int max_input_size = 20;
-    char *cmd = talloc_asprintf(fp, "bzcat '%s' | wc -c", cfbp->inherited.filename);
+
+    char *cmd = talloc_asprintf(fp, "bzcat '%s' | wc -c", fp->filename);
     if (! cmd) {
         return 0;
     }
