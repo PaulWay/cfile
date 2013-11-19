@@ -288,7 +288,7 @@ ssize_t xz_read(cfile *fp, void *ptr, size_t size, size_t num) {
  * \param ptr The memory to read from.
  * \param size The size of each structure in bytes.
  * \param num The number of structures to write.
- * \return The success of the file write operation.
+ * \return The number of _items_ written (num, not size)
  */
  
 ssize_t xz_write(cfile *fp, const void *ptr, size_t size, size_t num) {
@@ -305,14 +305,14 @@ ssize_t xz_write(cfile *fp, const void *ptr, size_t size, size_t num) {
             return 0;
         }
         /* Leave early if there's still room for more compressed data */
-        if (cfxp->stream.avail_out == cfxp->buffer->bufsize) break;
+        if (cfxp->stream.avail_out > 0) break;
         /* Write the entire buffer, reset pointer and available size */
-        fwrite(cfxp->stream.next_out, sizeof(uint8_t),
+        fwrite(cfxp->buffer->buffer, sizeof(uint8_t),
          cfxp->buffer->bufsize, cfxp->xf);
         cfxp->stream.next_out = (uint8_t *)cfxp->buffer->buffer;
         cfxp->stream.avail_out = cfxp->buffer->bufsize;
     }
-    return rtn;
+    return num;
 }
 
 /*! \brief Flush the file's output buffer.
@@ -355,8 +355,30 @@ int xz_flush(cfile *fp) {
  
 int xz_close(cfile *fp) {
     cfile_xz *cfxp = (cfile_xz *)fp;
+    lzma_ret rtn;
     
-    xz_flush(fp);
+    if (cfxp->writing) {
+        for (;;) {
+            rtn = lzma_code(&cfxp->stream, LZMA_FINISH);
+            if (cfxp->stream.avail_out == 0) {
+                /* Write the buffer to it */
+                fwrite(cfxp->buffer->buffer, sizeof(uint8_t),
+                 cfxp->buffer->bufsize, cfxp->xf);
+                cfxp->stream.next_out = (uint8_t *)cfxp->buffer->buffer;
+                cfxp->stream.avail_out = cfxp->buffer->bufsize;
+            }
+            
+            if (rtn == LZMA_STREAM_END) {
+                fwrite(cfxp->buffer->buffer, sizeof(uint8_t),
+                 cfxp->buffer->bufsize - cfxp->stream.avail_out, cfxp->xf);
+                break;
+            }
+            
+            if (rtn > 0) {
+                break;
+            }
+        }
+    }
     lzma_end(&cfxp->stream);
     return fclose(cfxp->xf);
 }
