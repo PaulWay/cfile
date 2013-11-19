@@ -206,12 +206,12 @@ off_t xz_size(cfile *fp) {
     
     for (;;) {
         fgets(line, max_line_size, xzpipe);
-        if (strstr(line, "Uncompressed size") == NULL) {
-            continue;
-        }
         if (feof(xzpipe)) {
             /* In case we miss the uncompressed size for some reason */
             break;
+        }
+        if (strstr(line, "Uncompressed size") == NULL) {
+            continue;
         }
         /* Find open bracket in line before null */
         for (; *line && *line != '('; line++);
@@ -227,6 +227,7 @@ off_t xz_size(cfile *fp) {
                 size = size * 10 + (*line - '0');
             }
         }
+        break;
     }
     
     fclose(xzpipe);
