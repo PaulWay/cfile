@@ -1,0 +1,12 @@
+#!/bin/sh
+
+if [[ "do$1" == "doclean" ]]; then
+        rm xz.test.xz
+        exit
+fi
+
+if [[ ! -f xz.test.xz || xz.test.xz -ot xz.test ]]; then
+	xz -c xz.test > xz.test.xz
+fi
+
+../test-cat xz.test.xz | diff - xz.test

@@ -1,0 +1,12 @@
+#!/bin/sh
+
+if [[ "do$1" == "doclean" ]]; then
+	rm xz-enc.test.xz
+	exit
+fi
+
+if [[ ! -f xz-enc.test.xz || xz-enc.test.xz -ot xz-enc.test ]]; then
+	../test-cat xz-enc.test -o xz-enc.test.xz
+fi
+
+xzcat xz-enc.test.xz | diff - xz-enc.test
