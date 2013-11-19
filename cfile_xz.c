@@ -174,13 +174,65 @@ cfile *xz_open(const char *name, /*!< The name of the file to open */
 off_t xz_size(cfile *fp) {
     /* cfile_xz *cfxp = (cfile_xz *)fp; */
     
-    /* See source of xz for this - basically read the footer off the end of
-     * the file and then try to find further footers earlier in the file */
-    FILE *my_fp;
+    /* I looked in the source code of xz for how it lists the uncompressed
+     * size of the file.  It's ugly and complicated, and there's no library
+     * routine to do it - it's a lot of gotos and in-house routines and
+     * declarations inside code and other non-standard stuff.
+     * I'm going to use the output of xz -lv, which contains a line e.g.:
+     *   Uncompressed size:  4,856.3 KiB (4,972,805 B)
+     * Once we've hit that, we can decode the number in brackets and return
+     * that.
+     */
+    FILE *xzpipe;
+    off_t size = 0;
+    const int max_line_size = 80;
+    char *line;
     
-    my_fp = fopen(fp->filename, "r");
-    fclose(my_fp);
-    return -1;
+    char *cmd = talloc_asprintf(fp, "xz -lv '%s'", fp->filename);
+    if (!cmd) {
+        return 0;
+    }
+    line = talloc_array(cmd, char, max_line_size);
+    if (!line) {
+        talloc_free(cmd);
+        return 0;
+    }
+    
+    xzpipe = popen(cmd, "r");
+    if (!xzpipe) {
+        talloc_free(cmd); /* frees line as well */
+        return 0;
+    }
+    
+    for (;;) {
+        fgets(line, max_line_size, xzpipe);
+        if (strstr(line, "Uncompressed size") == NULL) {
+            continue;
+        }
+        if (feof(xzpipe)) {
+            /* In case we miss the uncompressed size for some reason */
+            break;
+        }
+        /* Find open bracket in line before null */
+        for (; *line && *line != '('; line++);
+        if (*line == '\0') {
+            /* End of line without open bracket: can't find raw uncompressed
+             * size.  Fail out here. */
+            break;
+        }
+        /* Read numerals until next space, ignoring commas */
+        for (; *line && *line != ' '; line++) {
+            if (*line >= '0' && *line <= '9') {
+                /* Assuming ASCII... is xz locale sensitive? */
+                size = size * 10 + (*line - '0');
+            }
+        }
+    }
+    
+    fclose(xzpipe);
+    talloc_free(cmd);
+    
+    return size;
 }
 
 /*! \brief Returns true if we've reached the end of the file being read.
