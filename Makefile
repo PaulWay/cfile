@@ -37,7 +37,7 @@ CPPFLAGS = \
 	-I.
 
 all: libcfile.a all-bin
-all-bin: test-cat test-xz test_prelude
+all-bin: test-cat test-xz test_prelude get_raw_size
 
 cfile_normal.o: cfile.h cfile_normal.h cfile_private.h
 
@@ -71,6 +71,9 @@ test-cat: test-cat.o libcfile.a
 
 test-xz: libcfile.a test-xz.c
 	gcc ${CFLAGS} test-xz.c -o $@ -L. -lcfile -lz -lbz2 -ltalloc -llzma
+
+get_raw_size: libcfile.a test-xz.c
+	gcc ${CFLAGS} get_raw_size.c -o $@ -L. -lcfile -lz -lbz2 -ltalloc -llzma
 
 _info: _info.o
 	gcc -g _info.o -o $@
