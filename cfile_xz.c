@@ -273,7 +273,6 @@ off_t xz_size(cfile *fp) {
                 break;
             }
         } else {
-            printf("Error %d decoding LZMA index\n", rtn);
             break;
         }
         
