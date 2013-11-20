@@ -5,3 +5,9 @@ improvements:
   many bytes we've written and return that.
 * cfile can also provide cfgetc
 * providing cfungetc seems pointless though - who uses ungetc?
+* Can we read the size of a BZIP2 file by finding and counting each block in 
+  turn?  Presumably each block knows how much compressed
+  data it contains so it can find the next block, and how much uncompressed 
+  data it contains because it has to do the Burrows-Wheeler Transform on a fixed size.
+  Skipping through blocks like that would be quicker than reading the whole
+  file...  Maybe talk to Julian Seward about this?
