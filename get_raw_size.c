@@ -48,7 +48,7 @@ off_t get_raw_size(const char *filename) {
 }
 
 int main(int argc, char *argv[]) {
-	int n = 0;
+	int n = 1;
 	
 	for (; n < argc; n++) {
 		printf("Raw size of %s = %lu\n", argv[n], get_raw_size(argv[n]));
