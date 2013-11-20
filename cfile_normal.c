@@ -35,7 +35,6 @@
  * We only need to store the actual file pointer.
  */
 typedef struct cfile_normal {
-    cfile *vptr;     /*< something or other */
     cfile inherited; /*< our inherited cfile structure */
     FILE *fp;        /*< the actual uncompressed file pointer */
 } cfile_normal;
