@@ -174,65 +174,149 @@ cfile *xz_open(const char *name, /*!< The name of the file to open */
 off_t xz_size(cfile *fp) {
     /* cfile_xz *cfxp = (cfile_xz *)fp; */
     
-    /* I looked in the source code of xz for how it lists the uncompressed
-     * size of the file.  It's ugly and complicated, and there's no library
-     * routine to do it - it's a lot of gotos and in-house routines and
-     * declarations inside code and other non-standard stuff.
-     * I'm going to use the output of xz -lv, which contains a line e.g.:
-     *   Uncompressed size:  4,856.3 KiB (4,972,805 B)
-     * Once we've hit that, we can decode the number in brackets and return
-     * that.
+    /* An attempt at reimplementing the rather complex index reading 
+     * algorithm in xz/src/xz/index.c.  It's a shame this isn't offered
+     * in the lzma library itself.  
      */
-    FILE *xzpipe;
+    FILE *my_fh;
     off_t size = 0;
-    const int max_line_size = 80;
-    char *line;
-    
-    char *cmd = talloc_asprintf(fp, "xz -lv '%s'", fp->filename);
-    if (!cmd) {
+    long pos;
+    uint32_t *data;
+    size_t data_read;
+    const size_t max_data_read = 32; /* 32 uint32's - should be enough */
+    lzma_stream *stream;
+    lzma_vli stream_padding;
+    lzma_stream_flags header_flags;
+    lzma_stream_flags footer_flags;
+    lzma_ret rtn;
+    lzma_vli index_size;
+    lzma_index *combined_index = NULL;
+    lzma_index *this_index = NULL;
+
+    data = talloc_array(fp, uint32_t, max_data_read);
+    if (!data) {
         return 0;
     }
-    line = talloc_array(cmd, char, max_line_size);
-    if (!line) {
-        talloc_free(cmd);
+    stream = talloc(data, lzma_stream);
+    if (!stream) {
+        talloc_free(data);
         return 0;
     }
-    
-    xzpipe = popen(cmd, "r");
-    if (!xzpipe) {
-        talloc_free(cmd); /* frees line as well */
+    if (!(my_fh = fopen(fp->filename, "r"))) {
+        talloc_free(data);
         return 0;
     }
+    fseek(my_fh, 0, SEEK_END);
+    pos = ftell(my_fh);
+    if (pos < 2*LZMA_STREAM_HEADER_SIZE) {
+        /* Not enough to contain a stream header and footer; exit now. */
+        talloc_free(data);
+        fclose(my_fh);
+    }
     
-    for (;;) {
-        fgets(line, max_line_size, xzpipe);
-        if (feof(xzpipe)) {
-            /* In case we miss the uncompressed size for some reason */
+    /* Each loop iteration decodes one Index */
+    do {
+        pos -= LZMA_STREAM_HEADER_SIZE;
+        fseek(my_fh, pos, SEEK_SET);
+        
+        /* Locate stream footer, skipping over stream padding */
+        /* Inefficient loop, maybe, but simpler logic. */
+        for (stream_padding = 0;;) {
+            data_read = fread(data, 1, LZMA_STREAM_HEADER_SIZE, my_fh);
+            /* Break once we hit something other than padding */
+            if (data[0] != 0) break;
+            /* Otherwise move back one 32-bit word and retry */
+            pos -= sizeof(uint32_t);
+            stream_padding += sizeof(uint32_t);
+            fseek(my_fh, pos, SEEK_SET);
+        }
+        
+        /* Decode the stream footer */
+        rtn = lzma_stream_footer_decode(&footer_flags, (uint8_t *)data);
+        if (rtn != LZMA_OK) {
             break;
         }
-        if (strstr(line, "Uncompressed size") == NULL) {
-            continue;
-        }
-        /* Find open bracket in line before null */
-        for (; *line && *line != '('; line++);
-        if (*line == '\0') {
-            /* End of line without open bracket: can't find raw uncompressed
-             * size.  Fail out here. */
+        
+        /* Check that the size of this index field looks sane */
+        index_size = footer_flags.backward_size;
+        if ((lzma_vli)(pos) < index_size + LZMA_STREAM_HEADER_SIZE) {
             break;
         }
-        /* Read numerals until next space, ignoring commas */
-        for (; *line && *line != ' '; line++) {
-            if (*line >= '0' && *line <= '9') {
-                /* Assuming ASCII... is xz locale sensitive? */
-                size = size * 10 + (*line - '0');
+        
+        printf("Index size = %lu\n", index_size);
+        
+        /* Move to beginning of index and decode */
+        /* Skip memory limit check */
+        pos -= index_size;
+        fseek(my_fh, pos, SEEK_SET);
+        rtn = lzma_index_decoder(stream, &this_index, UINT64_MAX);
+        if (rtn != LZMA_OK) {
+            break;
+        }
+        do {
+            stream->avail_in = index_size > max_data_read ? max_data_read : index_size;
+            data_read = fread(data, 1, stream->avail_in, my_fh);
+            if (data_read < stream->avail_in) {
+                break; /* need to exit entire loop - see below */
+            }
+            pos += stream->avail_in;
+            index_size -= stream->avail_in;
+            stream->next_in = (uint8_t *)data;
+            rtn = lzma_code(stream, LZMA_RUN);
+        } while (rtn == LZMA_OK);
+        /* Exit entire loop if we didn't read a full block - see above */
+        if (data_read < stream->avail_in) {
+            printf("Caught entire loop exit - working?\n");
+            break;
+        }
+        
+        /* Check that we read as much as indicated */
+        if (rtn == LZMA_STREAM_END) {
+            if (index_size != 0 || stream->avail_in != 0) {
+                break;
+            }
+        } else {
+            printf("Error %d decoding LZMA index\n", rtn);
+            break;
+        }
+        
+        /* Decode the stream header and check that its stream flags match
+         * the stream footer */
+        pos -= (footer_flags.backward_size + LZMA_STREAM_HEADER_SIZE);
+        if ((lzma_vli)(pos) < lzma_index_total_size(this_index)) {
+            break;
+        }
+        pos -= lzma_index_total_size(this_index);
+        fseek(my_fh, pos, SEEK_SET);
+        data_read = fread(data, 1, LZMA_STREAM_HEADER_SIZE, my_fh);
+        if (data_read < LZMA_STREAM_HEADER_SIZE) {
+            break;
+        }
+        rtn = lzma_stream_header_decode(&header_flags, (uint8_t *)data);
+        if (rtn != LZMA_OK) {
+            break;
+        }
+        
+        /* combine indexes if we have two */
+        if (combined_index != NULL) {
+            rtn = lzma_index_cat(this_index, combined_index, NULL);
+            if (rtn != LZMA_OK) {
+                break;
             }
         }
-        break;
-    }
+        
+        combined_index = this_index;
+        this_index = NULL;
+    } while (pos > 0);
     
-    fclose(xzpipe);
-    talloc_free(cmd);
+    fclose(my_fh);
+    /* We should now have a combined index to get the size from. */
+    size = lzma_index_uncompressed_size(combined_index);
     
+    lzma_end(stream);
+    lzma_index_end(combined_index, NULL);
+    lzma_index_end(this_index, NULL);
+    talloc_free(data);
     return size;
 }
 
