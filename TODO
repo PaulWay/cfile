@@ -1,8 +1,5 @@
 Things to do to cfile:
 
-bug fixes:
-* close file in _open if struct alloc fails.
-
 improvements:
 * cfsize returns 0 on a file being written?  Or keep a track of how
   many bytes we've written and return that.
