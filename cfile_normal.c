@@ -74,9 +74,8 @@ static const cfile_vtable normal_cfile_table;
  */
 
 static off_t normal_size(cfile *fp) {
-    cfile_normal *cfnp = (cfile_normal *)fp;
     struct stat sp;
-    if (stat(cfnp->inherited.filename, &sp) == 0) {
+    if (stat(fp->filename, &sp) == 0) {
         return sp.st_size;
     } else {
         return 0;
