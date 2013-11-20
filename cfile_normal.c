@@ -43,31 +43,6 @@ static const cfile_vtable normal_cfile_table;
 
 /*! \brief Returns the _uncompressed_ file size
  *
- *  The common way of reporting your progress through reading a file is
- *  as a proportion of the uncompressed size.  But a simple stat of the
- *  compressed file will give you a much lower figure.  So here we
- *  extract the size of the uncompressed content of the file.  Naturally
- *  this process is easy with uncompressed files.  It's also fairly
- *  easy with gzip files - the size is a 32-bit little-endian signed
- *  int (I think) at the end of the file.  Unfortunately, bzip2 files
- *  do not carry this information, so we have to read the entire file
- *  through bzcat and wc -c.  This is easier than reading it directly,
- *  although it then relies on the availability of those two binaries,
- *  and may therefore make this routine not portable.  I'm not sure if
- *  this introduces any security holes in this library.  Unfortunately,
- *  correspondence with Julian Seward has confirmed that there's no
- *  other way of determining the exact uncompressed file size, as it's
- *  not stored in the bzip2 file itself.
- *
- *  HOWEVER: we can save the next call to cfsize on this file a
- *  considerable amount of work if we save the size in a filesystem
- *  extended attribute.  Because rewriting an existing file does a
- *  truncate rather than delete the inode, the attribute may get out of
- *  sync with the actual file.  So we also write the current time as a
- *  timestamp on that data.  If the file's mtime is greater than that
- *  timestamp, then the data is out of date and must be recalculated.
- *  Make sure your file system has the \c user_xattr option set if you
- *  want to use this feature!
  * \param fp The file handle to check
  * \return The number of bytes in the uncompressed file.
  */
@@ -83,10 +58,6 @@ static off_t normal_size(cfile *fp) {
 
 /*! \brief Returns true if we've reached the end of the file being read.
  *
- *  This mostly passes through the state of the lower-level's EOF
- *  checking.  But bzlib doesn't seem to correctly return BZ_STREAM_END
- *  when the stream has actually reached its end, so we have to check
- *  another way - whether the last buffer read was zero bytes long.
  * \param fp The file handle to check.
  * \return True (1) if the file has reached EOF, False (0) if not.
  */
@@ -148,7 +119,7 @@ static int normal_vprintf(cfile *fp, const char *fmt, va_list ap) {
  * \param ptr The memory to write into.
  * \param size The size of each structure in bytes.
  * \param num The number of structures to read.
- * \return The success of the file read operation.
+ * \return As in fread, the number of _items_ read.
  */
 
 static ssize_t normal_read(cfile *fp, void *ptr, size_t size, size_t num) {
@@ -164,7 +135,7 @@ static ssize_t normal_read(cfile *fp, void *ptr, size_t size, size_t num) {
  * \param ptr The memory to read from.
  * \param size The size of each structure in bytes.
  * \param num The number of structures to write.
- * \return The success of the file write operation.
+ * \return As in fwrite, the number of _items_ written.
  */
 
 static ssize_t normal_write(cfile *fp, const void *ptr, size_t size,
@@ -180,10 +151,6 @@ static ssize_t normal_write(cfile *fp, const void *ptr, size_t size,
  *  yet written to disk.  If the file is being read, it has no effect.
  * \param fp The file handle to flush.
  * \return the success of the file flush operation.
- * \note for gzip files, under certain compression methods, flushing
- *  may result in lower compression performance.  We use Z_SYNC_FLUSH
- *  to write to the nearest byte boundary without unduly impacting
- *  compression.
  */
 
 static int normal_flush(cfile *fp) {
@@ -303,5 +270,4 @@ static const cfile_vtable normal_cfile_table = {
     "Normal file"
 };
 
-
-/* vim: set ts=8 sw=4 et : */
+/* vim: set ts=4 sw=4 et : */
