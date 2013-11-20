@@ -185,7 +185,6 @@ off_t xz_size(cfile *fp) {
     size_t data_read;
     const size_t max_data_read = 32; /* 32 uint32's - should be enough */
     lzma_stream *stream;
-    lzma_vli stream_padding;
     lzma_stream_flags header_flags;
     lzma_stream_flags footer_flags;
     lzma_ret rtn;
@@ -197,7 +196,7 @@ off_t xz_size(cfile *fp) {
     if (!data) {
         return 0;
     }
-    stream = talloc(data, lzma_stream);
+    stream = talloc_zero(data, lzma_stream);
     if (!stream) {
         talloc_free(data);
         return 0;
@@ -221,13 +220,14 @@ off_t xz_size(cfile *fp) {
         
         /* Locate stream footer, skipping over stream padding */
         /* Inefficient loop, maybe, but simpler logic. */
-        for (stream_padding = 0;;) {
+        for (;;) {
+            /* Read entire header space...*/
             data_read = fread(data, 1, LZMA_STREAM_HEADER_SIZE, my_fh);
-            /* Break once we hit something other than padding */
-            if (data[0] != 0) break;
+            /* Break once we hit something other than padding in the
+             * *last* word */
+            if (data[(LZMA_STREAM_HEADER_SIZE / sizeof(uint32_t))-1] != 0) break;
             /* Otherwise move back one 32-bit word and retry */
             pos -= sizeof(uint32_t);
-            stream_padding += sizeof(uint32_t);
             fseek(my_fh, pos, SEEK_SET);
         }
         
@@ -242,8 +242,6 @@ off_t xz_size(cfile *fp) {
         if ((lzma_vli)(pos) < index_size + LZMA_STREAM_HEADER_SIZE) {
             break;
         }
-        
-        printf("Index size = %lu\n", index_size);
         
         /* Move to beginning of index and decode */
         /* Skip memory limit check */
@@ -266,7 +264,6 @@ off_t xz_size(cfile *fp) {
         } while (rtn == LZMA_OK);
         /* Exit entire loop if we didn't read a full block - see above */
         if (data_read < stream->avail_in) {
-            printf("Caught entire loop exit - working?\n");
             break;
         }
         
