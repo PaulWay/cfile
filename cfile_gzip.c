@@ -25,6 +25,7 @@
 #include <errno.h>
 #include <zlib.h>
 #include <talloc.h>
+#include <stdint.h>
 
 #include "cfile_private.h"
 #include "cfile_gzip.h"
@@ -94,7 +95,7 @@ cfile *gzip_open(const char *name, /*!< The name of the file to open.
  */
 
 off_t gzip_size(cfile *fp) {
-    int size; /* Make sure this is a 32-bit int! */
+    uint32_t size; /* Make sure this is a 32-bit int! */
 
     FILE *rawfp = fopen(fp->filename,"rb"); /* open the compressed file directly */
     if (!rawfp) {
