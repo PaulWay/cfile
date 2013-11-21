@@ -101,7 +101,7 @@ off_t gzip_size(cfile *fp) {
     if (!rawfp) {
         return 0;
     }
-    fseek(rawfp,-4,2);
+    fseek(rawfp,-4,SEEK_END);
     fread(&size,4,1,rawfp);
     fclose(rawfp);
     return (off_t)size;
