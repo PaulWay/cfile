@@ -29,13 +29,13 @@
 #include "cfile_xz.h"
 
 /* Predeclare function calls */
-off_t   xz_size(cfile *fp);
-bool    xz_eof(cfile *fp);
-char   *xz_gets(cfile *fp, char *str, size_t len);
-ssize_t xz_read(cfile *fp, void *ptr, size_t size, size_t num);
-ssize_t xz_write(cfile *fp, const void *ptr, size_t size, size_t num);
-int     xz_flush(cfile *fp);
-int     xz_close(cfile *fp);
+static off_t   xz_size(cfile *fp);
+static bool    xz_eof(cfile *fp);
+static char   *xz_gets(cfile *fp, char *str, size_t len);
+static ssize_t xz_read(cfile *fp, void *ptr, size_t size, size_t num);
+static ssize_t xz_write(cfile *fp, const void *ptr, size_t size, size_t num);
+static int     xz_flush(cfile *fp);
+static int     xz_close(cfile *fp);
 
 /*! \brief The xz file structure
  *
@@ -65,8 +65,8 @@ static const cfile_vtable xz_cfile_table;
  * This provides uncompressed data to the generic buffer implementation.
  */
 
-size_t xz_read_into_buffer(cfile *private);
-size_t xz_read_into_buffer(cfile *private) {
+static size_t xz_read_into_buffer(cfile *private);
+static size_t xz_read_into_buffer(cfile *private) {
     cfile_xz *cfxp = (cfile_xz *)private;
     size_t from_file = 0;
     lzma_ret rtn;
@@ -171,7 +171,7 @@ cfile *xz_open(const char *name, /*!< The name of the file to open */
  * \return The number of bytes in the uncompressed file.
  */
 
-off_t xz_size(cfile *fp) {
+static off_t xz_size(cfile *fp) {
     /* cfile_xz *cfxp = (cfile_xz *)fp; */
     
     /* An attempt at reimplementing the rather complex index reading 
@@ -325,7 +325,7 @@ off_t xz_size(cfile *fp) {
  * \return True (1) if the file has reached EOF, False (0) if not.
  */
 
-bool xz_eof(cfile *fp) {
+static bool xz_eof(cfile *fp) {
     cfile_xz *cfxp = (cfile_xz *)fp;
     /* we are done if the input file is empty and the buffer is 
      * exhausted too.  Asking feof on a writing file is nonsensical. */
@@ -347,7 +347,7 @@ bool xz_eof(cfile *fp) {
  * \return A pointer to the string thus read.
  */
  
-char *xz_gets(cfile *fp, char *str, size_t len) {
+static char *xz_gets(cfile *fp, char *str, size_t len) {
     cfile_xz *cfxp = (cfile_xz *)fp;
     return buf_fgets(cfxp->buffer, str, len, fp);
 }
@@ -365,10 +365,10 @@ char *xz_gets(cfile *fp, char *str, size_t len) {
  * \todo Should we be reusing a buffer rather than allocating one each time?
  */
 
-int xz_vprintf(cfile *fp, const char *fmt, va_list ap)
+static int xz_vprintf(cfile *fp, const char *fmt, va_list ap)
   __attribute ((format (printf, 2, 0)));
 
-int xz_vprintf(cfile *fp, const char *fmt, va_list ap) {
+static int xz_vprintf(cfile *fp, const char *fmt, va_list ap) {
     int rtn;
     char *buf = talloc_vasprintf(fp, fmt, ap);
     rtn = xz_write(fp, buf, sizeof(char), strlen(buf));
@@ -390,7 +390,7 @@ int xz_vprintf(cfile *fp, const char *fmt, va_list ap) {
  * \return The success of the file read operation.
  */
  
-ssize_t xz_read(cfile *fp, void *ptr, size_t size, size_t num) {
+static ssize_t xz_read(cfile *fp, void *ptr, size_t size, size_t num) {
     cfile_xz *cfxp = (cfile_xz *)fp;
     ssize_t read_bytes = 0;
     ssize_t target_bytes = (size * num);
@@ -424,7 +424,7 @@ ssize_t xz_read(cfile *fp, void *ptr, size_t size, size_t num) {
  * \return The number of _items_ written (num, not size)
  */
  
-ssize_t xz_write(cfile *fp, const void *ptr, size_t size, size_t num) {
+static ssize_t xz_write(cfile *fp, const void *ptr, size_t size, size_t num) {
     cfile_xz *cfxp = (cfile_xz *)fp;
     lzma_ret rtn;
 
@@ -459,7 +459,7 @@ ssize_t xz_write(cfile *fp, const void *ptr, size_t size, size_t num) {
  * \return the success of the file flush operation.
  */
  
-int xz_flush(cfile *fp) {
+static int xz_flush(cfile *fp) {
     cfile_xz *cfxp = (cfile_xz *)fp;
     lzma_ret rtn;
     size_t written;
@@ -486,7 +486,7 @@ int xz_flush(cfile *fp) {
  * \return the success of the file close operation.
  */
  
-int xz_close(cfile *fp) {
+static int xz_close(cfile *fp) {
     cfile_xz *cfxp = (cfile_xz *)fp;
     lzma_ret rtn;
     
