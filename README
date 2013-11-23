@@ -53,14 +53,21 @@ rror -I.  -c -o test-cat.o test-cat.c
 gcc -g test-cat.o -o test-cat -L. -lcfile -lz -lbz2 -ltalloc
 $
 
-
+This will compile the library (libcfile.a) and the test programs 'test-cat',
+'test-xz' and 'get_raw_size'.
 
 Required libraries:
 ===================
 
-To compile CFile, you'll need:
+To compile CFile, you'll need the following:
+
+on a Fedora system, install the packages:
 
 libtalloc-devel
 libattr-devel
 libmagic-devel
+zlib-devel
+bzip2-devel 
+xz-devel
+
 
