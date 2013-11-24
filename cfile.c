@@ -29,7 +29,7 @@
  *
  *  Put simply, this library is designed to allow your code to read
  *  or write a file regardless of whether it is uncompressed, or
- *  compressed with either bzip2 or gzip.  It automatically detects
+ *  compressed with either bzip2, xz or gzip.  It automatically detects
  *  the compression type from the file's extension and encapsulates
  *  the appropriate library routines in a common interface.
  *  If the file name is "-", then stdin or stdout is opened as
@@ -43,7 +43,7 @@
  *  The following libraries are required for cfile:
  *   - The talloc library from http://talloc.samba.org must be
  *     installed.
- *   - zlib and bzlib must be installed.
+ *   - zlib, bzlib and liblzma must be installed.
  *   - In order to determine the uncompressed file size of bzip2
  *     file, the bzcat and wc binaries must be available to the
  *     calling program.
@@ -84,6 +84,8 @@
  *  The file extension for gzip files is \c '.gz'.
  *
  *  The file extension for bzip2 files is \c '.bz2'.
+ * 
+ *  The file extension for xz files is \c '.xz'.
  *
  *  If an uncompressed file is being read, the stdio routines will
  *  always be used, despite zlib supporting opening and reading both
