@@ -49,7 +49,7 @@ void cfile_set_context(void *parent_context);
   * @param name
   *     The pathname of the file to be opened, possibly with transparent
   *     gzip or bzip2 processing.
-  * @oaram mode
+  * @param mode
   *     The open mode to use, see fopen(3) for more information.
   */
 cfile *cfile_open(const char *name, const char *mode);
@@ -57,7 +57,7 @@ cfile *cfile_open(const char *name, const char *mode);
 /**
   * The cfile_dopen function is used to open a file descriptor.
   *
-  * @param fildesc
+  * @param filedesc
   *     The file descriptor to access, it is treated as uncompressed.
   * @param mode
   *     The open mode to use, see fopen(3) for more information.
@@ -92,11 +92,11 @@ bool cfeof(cfile *fp);
 
 /**
   * The cfgets function is used to read in at most one less than size
-  * characters from #cf and stores them into the buffer pointed to by
-  * #str.  Reading stops after an EOF, or a newline, or running out of
-  * buffer space, as indicated by #len.  If a newline is read, it is
+  * characters from fp and stores them into the buffer pointed to by
+  * str.  Reading stops after an EOF, or a newline, or running out of
+  * buffer space, as indicated by len.  If a newline is read, it is
   * stored into the buffer.  A terminating NUL byte ('\0') is stored
-  * after the last character in the #str buffer.
+  * after the last character in the str buffer.
   *
   * @param fp
   *     The cfile handle of interest, returned by one of the #cfile_open or
@@ -121,8 +121,9 @@ char *cfgets(cfile *fp, char *str, size_t len);
   * @param fp
   *     The cfile handle of interest, returned by one of the #cfile_open or
   *     #cfile_dopen functions.
-  * @param str
-  *     A pointer to the buffer to receive the incoming data.
+  * @param line
+  *     A pointer to the buffer to receive the incoming data.  This may
+  *     be reallocated if not long enough to contain the entire line.
   * @returns
   *     True if we read anything, false if not.
   */
@@ -165,8 +166,8 @@ int cvfprintf(cfile *fp, const char *fmt, va_list ap)
   __attribute((format (printf, 2, 0)));
 
 /**
-  * The cfread function is used to read #num structures of #size bytes
-  * into the memory at #ptr.  No attempt at endianness conversion is
+  * The cfread function is used to read num structures of size bytes
+  * into the memory at ptr.  No attempt at endianness conversion is
   * made.
   *
   * @param fp
@@ -186,8 +187,8 @@ int cvfprintf(cfile *fp, const char *fmt, va_list ap)
 int cfread(cfile *fp, void *ptr, size_t size, size_t num);
 
 /**
-  * The cfwrite function is used to write #num structures of #size bytes
-  * from the memory at #ptr.  No attempt at endianness conversion is
+  * The cfwrite function is used to write num structures of size bytes
+  * from the memory at ptr.  No attempt at endianness conversion is
   * made.
   *
   * @param fp
@@ -234,7 +235,7 @@ int cfflush(cfile *fp);
   *     The file will <b>not</b> be closed automatically if the pointer
   *     goes out of scope.
   * @note
-  *     The behaviour of the cfclose function is undefined if the #fp
+  *     The behaviour of the cfclose function is undefined if the fp
   *     parameter is an illegal pointer, or is a descriptor already
   *     passed to a previous invocation of the cfclose function.
   */

@@ -27,10 +27,12 @@
   *
   * @param pathname
   *     The name of the file of interest (ignored).
+  * @param mode
+  * 	The mode to use for file operations (ignored).
   * @returns
-  *     new file handle
+  *     The new file handle
   */
-cfile *cfile_null_open(const char *pathname, const char *name);
+cfile *cfile_null_open(const char *pathname, const char *mode);
 
 /**
   * The cfile_null_candidate function is used to determine whether or
