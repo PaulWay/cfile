@@ -101,18 +101,6 @@
  *
  * \todo Use the buffer to write to: avoids allocating a new temporary
  *  buffer upon each cfprintf() and cvfprintf().
- *
- * \todo Tridge noted that the standard implementation of stdio has
- *  pointers in the file handle that refer to the functions that are
- *  called when performing operations on that file handle.  It may
- *  therefore be able to provide a wrapper that allows callers to
- *  simply replace a #include <stdio.h> with #include <cfile.h> and
- *  all file operations would then happen transparently.  The modified
- *  fopen would determine the file type and update the jump block
- *  with the relevant functions (either direct calls to the functions
- *  in e.g. zlib, or wrappers that implement the correct semantics.
- *  So the whole thing would be a 'drop in' replacement for stdio,
- *  rather than requiring modification of existing code.
  */
 
 #include <stdarg.h>
