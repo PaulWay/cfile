@@ -39,14 +39,16 @@ static int     xz_close(cfile *fp);
 
 /*! \brief The xz file structure
  *
- * We only need to store the actual (zlib) file pointer.
+ * Because lzma is a stream compression library, we have to handle the
+ * file pointer and input/output buffering outselves.  Yay.
  */
 typedef struct cfile_xz {
     cfile inherited; /*< our inherited function table */
     FILE *xf;        /*< the actual xz file - just a standard handle */
     lzma_stream stream; /*< the LZMA stream information */
     bool writing;    /*< are we writing this file (i.e. encoding it),
-                         or reading (i.e. decoding)? */
+                         or reading (i.e. decoding)?  Only used when
+                         closing a file, since we have to flush the buffer.*/
     cfile_buffer *buffer; /*< our buffer structure */
     uint8_t *dec_buf; /*< temporary storage for decode reads */
 } cfile_xz;
@@ -55,8 +57,7 @@ static const cfile_vtable xz_cfile_table;
 
 /*! The size of the character buffer for reading lines from xz files.
  *
- *  This isn't really a file cache, just a way of saving us single-byte
- *  calls to bzread.
+ *  Used on both input and output.
  */
 #define XZ_BUFFER_SIZE 4096
 
