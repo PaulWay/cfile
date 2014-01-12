@@ -32,7 +32,8 @@ CFLAGS =  \
         -Wno-format-y2k \
         -Wdeclaration-after-statement \
         -Wextra \
-        -Werror
+        -Werror \
+	-g3 -ggdb -Wold-style-definition -Wmissing-declarations -Wundef
 CPPFLAGS = \
 	-I.
 
@@ -55,6 +56,7 @@ libfiles = \
 	cfile.o \
 	cfile_bzip2.o \
 	cfile_gzip.o \
+	cfile_lzo.o \
 	cfile_normal.o \
 	cfile_xz.o \
 	cfile_null.o \
