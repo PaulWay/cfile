@@ -115,14 +115,13 @@ cfile *xz_open(const char *name, /*!< The name of the file to open */
 	lzma_ret rtn = 0;
     
     if (!(own_file = fopen(name, mode))) {
-        return NULL;
+        goto xz_open_error;
     }
     
     cfxp = (cfile_xz *)cfile_alloc(&xz_cfile_table, name, mode);
     if (!cfxp) {
         errno = ENOMEM;
-        fclose(own_file);
-        return NULL;
+        goto xz_open_premalloc_error;
     }
 
     cfxp->xf = own_file;
@@ -130,16 +129,12 @@ cfile *xz_open(const char *name, /*!< The name of the file to open */
     cfxp->buffer = cfile_buffer_alloc(cfxp, XZ_BUFFER_SIZE, xz_read_into_buffer);
     if (!cfxp->buffer) {
         errno = ENOMEM;
-        fclose(own_file);
-        talloc_free(cfxp);
-        return NULL;
+        goto xz_open_postmalloc_error;
     }
     cfxp->dec_buf = talloc_array(cfxp, uint8_t, XZ_BUFFER_SIZE);
     if (!cfxp->dec_buf) {
         errno = ENOMEM;
-        fclose(own_file);
-        talloc_free(cfxp);
-        return NULL;
+        goto xz_open_postmalloc_error;
     }
     
     /* Can't do cfxp->stream = (LZMA_STREAM_INIT); because of macros */
@@ -158,12 +153,17 @@ cfile *xz_open(const char *name, /*!< The name of the file to open */
     
     if (rtn != LZMA_OK) {
         errno = EINVAL;
-        fclose(own_file);
-        talloc_free(cfxp); /* includes buffer */
-        return NULL;
+        goto xz_open_postmalloc_error;
     }
-    
+
     return (cfile *)cfxp;
+    
+xz_open_postmalloc_error:
+    talloc_free(cfxp); /* includes buffer, if allocated */
+xz_open_premalloc_error:
+    fclose(own_file);
+xz_open_error:
+    return NULL;
 }
 
 /*! \brief Returns the _uncompressed_ file size
