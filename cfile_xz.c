@@ -50,7 +50,8 @@ typedef struct cfile_xz {
                          or reading (i.e. decoding)?  Only used when
                          closing a file, since we have to flush the buffer.*/
     cfile_buffer *buffer; /*< our buffer structure */
-    uint8_t *dec_buf; /*< temporary storage for decode reads */
+    uint8_t *dec_buf; /*< temporary storage to decode reads into; when writing,
+                          the user will provide us with memory to read from.*/
 } cfile_xz;
 
 static const cfile_vtable xz_cfile_table;
@@ -125,21 +126,23 @@ cfile *xz_open(const char *name, /*!< The name of the file to open */
     }
 
     cfxp->xf = own_file;
+    cfxp->writing = (mode[0] == 'w');
 
     cfxp->buffer = cfile_buffer_alloc(cfxp, XZ_BUFFER_SIZE, xz_read_into_buffer);
     if (!cfxp->buffer) {
         errno = ENOMEM;
         goto xz_open_postmalloc_error;
     }
-    cfxp->dec_buf = talloc_array(cfxp, uint8_t, XZ_BUFFER_SIZE);
-    if (!cfxp->dec_buf) {
-        errno = ENOMEM;
-        goto xz_open_postmalloc_error;
+    if (! cfxp->writing) {
+        cfxp->dec_buf = talloc_array(cfxp, uint8_t, XZ_BUFFER_SIZE);
+        if (!cfxp->dec_buf) {
+            errno = ENOMEM;
+            goto xz_open_postmalloc_error;
+        }
     }
     
     /* Can't do cfxp->stream = (LZMA_STREAM_INIT); because of macros */
     memset((void *)&cfxp->stream, 0, sizeof(lzma_stream));
-    cfxp->writing = (mode[0] == 'w');
     if (cfxp->writing) {
         rtn = lzma_easy_encoder(&cfxp->stream, 9, LZMA_CHECK_CRC64);
         cfxp->stream.next_out = (uint8_t *)cfxp->buffer->buffer;
