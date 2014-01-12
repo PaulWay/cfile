@@ -22,6 +22,16 @@
 #ifndef CFILE_XZ_H
 #define CFILE_XZ_H
 
+/**
+  * The cfile_xz function is used to open XZ and LZMA files.
+  *
+  * @param pathname
+  *     The name of the file to open.
+  * @param mode
+  * 	The mode to use for file operations (read or write).
+  * @returns
+  *     The new file handle
+  */
 cfile *xz_open(const char *name, const char *mode);
 
 #endif
