@@ -82,10 +82,10 @@ typedef struct cfile_vtable {
  * I acknowledge my lasting debt to Peter Miller for his advice here.
  */
 
-typedef struct cfile {
+struct cfile_struct {
     const cfile_vtable *vptr; /*< pointer to virtual function table */
     char *filename;     /*< the name of this file, since we always have one */
-} cfile;
+};
 
 /*! \brief allocate a chunk of memory for a cfile
  * 
