@@ -56,7 +56,6 @@ libfiles = \
 	cfile.o \
 	cfile_bzip2.o \
 	cfile_gzip.o \
-	cfile_lzo.o \
 	cfile_normal.o \
 	cfile_xz.o \
 	cfile_null.o \
