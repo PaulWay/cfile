@@ -34,7 +34,7 @@
   * \typedef cfile
   *     The file handle type definition.
   */
-typedef struct cfile cfile;
+typedef struct cfile_struct cfile;
 
 /**
   * The cfile_set_context function is used to set cfile's owned Talloc
