@@ -299,8 +299,8 @@ static off_t xz_size(cfile *fp) {
         
         /* combine indexes if we have two */
         if (combined_index != NULL) {
-			/* this, other, allocator, padding (%4==0) */
-            rtn = lzma_index_cat(this_index, combined_index, NULL, 4);
+			/* this, other, allocator */
+            rtn = lzma_index_cat(this_index, combined_index, NULL);
             if (rtn != LZMA_OK) {
                 break;
             }
